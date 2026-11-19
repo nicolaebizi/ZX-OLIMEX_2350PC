@@ -6,3 +6,6 @@ firmware/*.hex
 firmware/*.elf
 firmware/*.map
 *.uf2
+
+# macOS
+.DS_Store
