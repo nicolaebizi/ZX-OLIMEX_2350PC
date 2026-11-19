@@ -1988,5 +1988,16 @@ void ZxSpectrumMenu::loadSettings() {
   _zxSpectrum->mouse()->mouseMode(settings.mouseMode);
   _zxSpectrum->mouse()->mode(settings.mouseJoystickMode);
   _videoDriverIndex = settings.videoDriverDefault;
-  _zxSpectrum->setAudioDriver(&_zx_spectrum_audio_drivers[settings.audioDriverDefault[_videoDriverIndex]]);
+  // R2 fix: after the SD-mount load (and a manual Settings→Load) the
+  // stored audioDriver could still be 0 (null) on the ES8311/I2S-only
+  // targets — re-assert the I2S codec there (the sanitise clamp is the
+  // primary guard, this is the same clamp applied on the way out).
+  uint8_t audioDriver = settings.audioDriverDefault[_videoDriverIndex];
+#ifdef ZX_AUDIO_ES8311_ONLY
+  if (audioDriver == zx_spectrum_audio_driver_null_index ||
+      audioDriver >= ZX_SPECTRUM_AUDIO_DRIVER_COUNT) {
+    audioDriver = zx_spectrum_audio_driver_i2s_index;
+  }
+#endif
+  _zxSpectrum->setAudioDriver(&_zx_spectrum_audio_drivers[audioDriver]);
 }

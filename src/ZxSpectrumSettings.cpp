@@ -59,13 +59,25 @@ void ZxSpectrumSettings::sanitise(ZxSpectrumSettingValues *values) {
     }
 
     // Audio output
-    for(uint8_t i = 0; i <  ZX_SPECTRUM_VIDEO_DRIVER_COUNT; ++i) {
+    for(uint8_t i = 0; i <  ZX_SPECTRUM_AUDIO_DRIVER_COUNT; ++i) {
+#ifdef ZX_AUDIO_ES8311_ONLY
+      // R2 fix: on the ES8311/I2S-only targets the null driver (0) is
+      // not a wired output, but it IS in range so the generic check
+      // below passes it through — a stale SD settings.bin storing 0
+      // would re-select the null driver at every boot. Clamp the null
+      // (and any out-of-range) entry to the I2S codec index.
+      if (values->audioDriverDefault[i] == zx_spectrum_audio_driver_null_index ||
+          values->audioDriverDefault[i] >= ZX_SPECTRUM_AUDIO_DRIVER_COUNT) {
+        values->audioDriverDefault[i] = zx_spectrum_audio_driver_i2s_index;
+      }
+#else
       if (values->audioDriverDefault[i] >= ZX_SPECTRUM_AUDIO_DRIVER_COUNT) {
         zx_spectrum_video_driver_t* videoDriver = getZxSpectrumVideoDriver((zx_spectrum_video_driver_enum_t)i);
         values->audioDriverDefault[i] = videoDriver->audio_default != NULL
           ? (uint8_t)videoDriver->audio_default()
           : 0;
       }
+#endif
     }
 }
 

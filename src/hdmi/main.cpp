@@ -384,7 +384,15 @@ int main() {
   pcw_init_renderer();
   
   // Setup the default audio driver
+#ifdef ZX_AUDIO_ES8311_ONLY
+  // R2 fix: this target wires only the ES8311/I2S codec, so the boot
+  // dispatch must ALWAYS be the I2S driver — a stale SD settings.bin
+  // with audioDriver=0 (null) must never re-select the null driver at
+  // boot. Same pattern as main_auto.cpp:347.
+  zxSpectrum.setAudioDriver(zxSpectrumAudioInit(zx_spectrum_audio_driver_i2s_index));
+#else
   zxSpectrum.setAudioDriver(zxSpectrumAudioInit((zx_spectrum_audio_driver_enum_t)settings.audioDriverDefault[settings.videoDriverDefault]));
+#endif
 
   printf("Core 1 start\n");
   
