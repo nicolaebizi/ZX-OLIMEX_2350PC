@@ -14,7 +14,7 @@ static ZxEsDiag zxEsDiagState = {
   0xFF, // regFail
   0,    // sps
   0,    // smRun
-  {0xFF, 0xFF, 0xFF, 0xFF} // rb: no readback until zxEs8311Init() fills it
+  {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF} // rb: no readback until zxEs8311Init() fills it
 };
 static uint32_t zxEsDiagSecSamples; // sample pushes since the last latch
 static uint32_t zxEsDiagSecFrames;  // frames since the last latch
@@ -47,7 +47,7 @@ void zxEsDiagFrameEnd(void) {
 void zxEsDiagSmRun(bool run) { zxEsDiagState.smRun = run ? 1 : 0; }
 
 void zxEsDiagRb(uint8_t idx, uint8_t val) {
-  if (idx < 4) zxEsDiagState.rb[idx] = val;
+  if (idx < 8) zxEsDiagState.rb[idx] = val;
 }
 
 #endif

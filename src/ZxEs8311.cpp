@@ -74,6 +74,7 @@
 #define ES8311_SDPOUT_REG0A   0x0A  // serial data port out (ASDOUT)
 #define ES8311_SYSTEM_REG0D   0x0D  // analog power
 #define ES8311_SYSTEM_REG0E   0x0E  // ADC PGA + modulator power
+#define ES8311_SYSTEM_REG11   0x11  // system "VSEL" (datasheet default 0x7C, never written by us - readback sanity)
 #define ES8311_SYSTEM_REG12   0x12  // DAC power
 #define ES8311_SYSTEM_REG13   0x13  // output (HP drive) enable
 #define ES8311_SYSTEM_REG14   0x14  // analog input select + mic PGA enable
@@ -225,17 +226,34 @@ bool zxEs8311Init() {
   es_write(ES8311_DAC_REG31, r31 & ~0x60); // clear the two DAC mute bits
 
 #ifdef ZX_ESDIAG
-  // E83 diag (f): readback of the DAC/HP path registers just written, via
-  // the proven repeated-START es_read.  A readback != the value written
-  // (expected: R13=0x10, R14=0x1A, R32=0xFF at 100% volume, R17=0xC8)
-  // means the I2C write was silently dropped (DDC-shared bus quirk);
-  // a readback of 0xFF itself means the read transaction failed.
+  // E83 diag (f): readback of the FULL clocking + DAC verification set
+  // (8 registers), via the proven repeated-START es_read.  Row order:
+  // R01/R02/R11/R12/R13 + R14/R32/R17.  Expected values for our BCLK-driven
+  // init (computed from the init code above):
+  //   R01 = 0xBF (0x3F|0x80: all codec clocks on, bit7 = 1 -> the internal
+  //          MCLK is taken from the SCLK/BCLK pin - the BCLK-driven mode
+  //          MANDATORY sanity check; bit7 = 0/absent here means the write
+  //          was dropped or the chip fell back to another clock source)
+  //   R02 = 0x18 (pre-div 1, x8 pre-multiplier; read-modify-write keeps the
+  //          reset low bits, assumed 0)
+  //   R11 = 0x7C (datasheet default of this never-written register - a
+  //          wrong value means the read path or chip state is off)
+  //   R12 = 0x00 (DAC powered up)
+  //   R13 = 0x10 (HP drive enabled)
+  //   R14 = 0x1A (mic path defaults)
+  //   R32 = 0xFF (DAC volume 100%)
+  //   R17 = 0xC8 (ADC gain, vendor value)
+  // A readback != the value written means the I2C write was silently
+  // dropped (DDC-shared bus quirk); a readback of 0xFF itself means the
+  // read transaction failed.
   {
-    static const uint8_t rbRegs[4] = {
+    static const uint8_t rbRegs[8] = {
+      ES8311_CLKM1_REG01, ES8311_CLKM2_REG02,
+      ES8311_SYSTEM_REG11, ES8311_SYSTEM_REG12,
       ES8311_SYSTEM_REG13, ES8311_SYSTEM_REG14,
       ES8311_DAC_REG32, ES8311_ADC_REG17
     };
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 8; ++i) {
       uint8_t v = 0;
       if (!es_read(rbRegs[i], &v)) v = 0xFF;
       zxEsDiagRb((uint8_t)i, v);
