@@ -10,11 +10,9 @@
 // Phase 2 (playback only, headphone jack): the codec runs as an I2S SLAVE
 // behind our PIO master (LRCK=GP29, BCLK=GP30, playback data = DSDIN/SDAI
 // = GP31) and is programmed over I2C0 (SDA=GP32, SCL=GP33, addr 0x18,
-// 400 kHz).  Clocking (R4, esp-bsp default): the codec is MCLK-driven -
-// zxEs8311Init() drives MCLK = GP23 (CLOCK_GPOUT1, clk_sys/22 =
-// 11.4432 MHz at fs = 44100, +1.4% vs the ideal 256fs = 11.2896 MHz,
-// tolerated by the codec's internal dividers), so the codec's R01 bit7
-// = 0; the PIO stays the BCLK/LRCK master, unchanged.
+// 400 kHz).  Clocking uses the datasheet MCLK-free mode: the internal
+// clock tree derives from SCLK (BCLK) itself, so GP23 (CLOCK_GPOUT1
+// MCLK) is deliberately left untouched.
 //
 // The codec power LDO enable (PWR_EN#, GP22) polarity is not 100%
 // audited; init probes the codec over I2C with the pin HIGH first (R43

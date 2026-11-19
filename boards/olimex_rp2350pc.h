@@ -30,8 +30,8 @@
  *     first, LOW fallback; the working level is logged over UART)
  *     I2S (codec = slave): LRCK = GP29, BCLK = GP30, DSDIN = GP31
  *     (PIO1 master, data out).  ASDOUT = GP28 (codec ADC out) unused.
- *     MCLK = GP23 (CLOCK_GPOUT1, R4: the esp-bsp default MCLK-driven
- *     codec mode, sys/22 = 11.4432 MHz at fs = 44100)
+ *     MCLK-free (BCLK-driven) clocking -> GP23 (CLOCK_GPOUT1 MCLK)
+ *     deliberately not driven.
  *   PSRAM: APS6404 CS = GP8 (QMI_CS1n), LATER PHASE
  *   User LED: GP25 (high = on)
  *

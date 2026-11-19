@@ -1796,14 +1796,10 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
       // ACK (01 = HIGH, 00 = LOW, FF = neither), A = the I2C probe ACK at
       // 0x18, R = the first failed init register write (FF = none),
       // S = PIO FIFO sample pushes in the last second (~44100 = healthy),
-      // M = the I2S PIO SM running flag.  "E83C: ..." = the R4 readback of
-      // six registers right after the init: R13/R14/R32/R17 (DAC/HP +
-      // ADC path, expected 10 1A FF C8 at 100% volume; a mismatch = the
-      // I2C write was silently dropped on the DDC-shared bus) plus the
-      // R4 clocking evidence R01/R11 (expected 3F 7C: R01 bit7 = 0 ->
-      // the codec is in the esp-bsp-default MCLK-driven mode with all
-      // clocks on, R11 = the datasheet default of this never-written
-      // register; 0xFF = read failed).
+      // M = the I2S PIO SM running flag.  "E83C: ..." = the R3 readback of
+      // the DAC/HP path registers R13/R14/R32/R17 right after the init
+      // (expected 10 1A FF C8 at 100% volume; a mismatch = the I2C write
+      // was silently dropped on the DDC-shared bus, 0xFF = read failed).
       // Belt-and-braces, UNGATED (visible without the diag build): if
       // neither GP22 polarity ACKed the note "E83: PWR?" shows instead
       // (power-domain question), else if the codec never answered
@@ -1812,12 +1808,11 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
 #ifdef ZX_AUDIO_ES8311_ONLY
 #ifdef ZX_ESDIAG
         const ZxEsDiag *ed = zxEsDiag();
-        pen->printAtF(0, 1, false, "E83: P%02X A%u R%u S%lu M%u E83C: %02X %02X %02X %02X %02X %02X",
+        pen->printAtF(0, 1, false, "E83: P%02X A%u R%u S%lu M%u E83C: %02X %02X %02X %02X",
           (unsigned)ed->pwr, (unsigned)ed->ack, (unsigned)ed->regFail,
           (unsigned long)ed->sps, (unsigned)ed->smRun,
           (unsigned)ed->rb[0], (unsigned)ed->rb[1],
-          (unsigned)ed->rb[2], (unsigned)ed->rb[3],
-          (unsigned)ed->rb[4], (unsigned)ed->rb[5]);
+          (unsigned)ed->rb[2], (unsigned)ed->rb[3]);
 #else
         if (zxEs8311PwrProbe() == 0xFF) {
           pen->printAt(0, 1, false, "E83: PWR?");

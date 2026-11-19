@@ -22,7 +22,7 @@ typedef struct ZxEsDiag {
   uint8_t  regFail; // (c) first failed init register write, 0xFF = none
   uint32_t sps;     // (d) PIO FIFO sample pushes in the last second (60 frames)
   uint8_t  smRun;   // (e) I2S PIO SM running flag (set at i2s_audio_init)
-  uint8_t  rb[6];   // (f) readback of R13/R14/R32/R17/R01/R11 after init (0xFF = read failed)
+  uint8_t  rb[4];   // (f) readback of R13/R14/R32/R17 after init (0xFF = read failed)
 } ZxEsDiag;
 
 const ZxEsDiag *zxEsDiag(void);
@@ -33,6 +33,6 @@ void zxEsDiagWr(uint8_t reg, bool ok);  // (c) one init register write result
 void zxEsDiagSample(void);              // (d) one stereo sample -> PIO FIFO
 void zxEsDiagFrameEnd(void);            // (d) frame wrap -> per-second latch
 void zxEsDiagSmRun(bool run);           // (e) PIO SM enabled flag
-void zxEsDiagRb(uint8_t idx, uint8_t val); // (f) one register readback, idx 0..5 = R13/R14/R32/R17/R01/R11
+void zxEsDiagRb(uint8_t idx, uint8_t val); // (f) one register readback, idx 0..3 = R13/R14/R32/R17
 
 #endif
