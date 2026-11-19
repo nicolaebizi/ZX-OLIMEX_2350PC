@@ -1,0 +1,125 @@
+name: MicroPython
+
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: ${{ matrix.name }} (${{ matrix.board }})
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        include:
+        - name: pico
+          board: RPI_PICO
+        - name: pico_usb
+          board: RPI_PICO_USB
+        - name: pico_ppp
+          board: RPI_PICO_PPP
+        - name: picow
+          board: RPI_PICO_W
+        - name: tiny2040_8mb
+          board: PIMORONI_TINY2040
+        - name: tufty2040
+          board: PIMORONI_TUFTY2040
+        - name: pico2
+          board: RPI_PICO2
+        - name: pico2_w
+          board: RPI_PICO2_W
+        - name: pico2b
+          board: RPI_PICO2B
+        - name: pico_plus2
+          board: PIMORONI_PICO_PLUS2
+        - name: tiny2350
+          board: PIMORONI_TINY2350
+
+    env:
+      # MicroPython version will be contained in github.event.release.tag_name for releases
+      CI_RELEASE_FILENAME: ${{ matrix.name }}-${{ github.event.release.tag_name || github.sha }}-pimoroni-micropython
+      CI_PROJECT_ROOT: "${{ github.workspace }}/pimoroni-pico-${{ github.sha }}"
+      CI_BUILD_ROOT: "${{ github.workspace }}"
+      CI_USE_ENV: 1
+      TAG_OR_SHA: ${{ github.event.release.tag_name || github.sha }}
+      MICROPY_BOARD: ${{ matrix.board }}
+      BOARD_NAME: ${{ matrix.name }}
+      BUILD_TOOLS: pimoroni-pico-${{ github.sha }}/ci/micropython.sh
+
+    steps:
+    - name: Compiler Cache
+      uses: actions/cache@v4
+      with:
+        path: /home/runner/.ccache
+        key: ccache-micropython-${{ matrix.name }}-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ccache-micropython-${{ matrix.name }}-${{ github.ref }}
+          ccache-micropython-${{ matrix.name }}-
+
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+        path: pimoroni-pico-${{ github.sha }}
+
+    - name: Install Arm GNU Toolchain (arm-none-eabi-gcc)
+      uses: carlosperate/arm-none-eabi-gcc-action@v1
+      with:
+        release: '13.3.Rel1'
+
+    - name: Install CCache
+      run: |
+        source $BUILD_TOOLS
+        ci_apt_install_build_deps
+      
+    - name: Checkout MicroPython & Submodules
+      run: |
+        source $BUILD_TOOLS
+        ci_micropython_clone
+
+    - name: "Py_Decl: Checkout py_decl"
+      run: |
+        source $BUILD_TOOLS
+        ci_tools_clone
+
+    - name: Build MPY Cross
+      run: |
+        source $BUILD_TOOLS
+        ci_micropython_build_mpy_cross
+
+    - name: "HACK: Pico SDK Patch"
+      shell: bash
+      run: |
+        source $BUILD_TOOLS
+        ci_hack_patch_pico_sdk
+
+    - name: Configure MicroPython
+      shell: bash
+      run: |
+        source $BUILD_TOOLS
+        ci_cmake_configure
+
+    - name: Build MicroPython
+      shell: bash
+      run: |
+        source $BUILD_TOOLS
+        ci_cmake_build
+
+    - name: "Py_Decl: Verify UF2"
+      shell: bash
+      run: |
+        source $BUILD_TOOLS
+        ci_py_decl_verify
+
+    - name: Store .uf2 as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.CI_RELEASE_FILENAME }}.uf2
+        path: ${{ env.CI_BUILD_ROOT }}/${{ env.CI_RELEASE_FILENAME }}.uf2
+
+    - name: Upload .uf2
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ${{ env.CI_BUILD_ROOT }}/${{ env.CI_RELEASE_FILENAME }}.uf2

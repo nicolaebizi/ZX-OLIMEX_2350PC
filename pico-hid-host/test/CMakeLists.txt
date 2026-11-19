@@ -1,0 +1,35 @@
+project (pico-hid-host-tests)
+
+cmake_minimum_required(VERSION 3.12)
+
+add_compile_options(-Wall)
+
+get_filename_component(PICO_FOLDER ${CMAKE_CURRENT_LIST_DIR}/../.. ABSOLUTE)
+get_filename_component(PICO_PROJECT_FOLDER ${CMAKE_CURRENT_LIST_DIR}/../ ABSOLUTE)
+
+set(PICO_SDK_FOLDER "${PICO_FOLDER}/pico/pico-sdk")
+if(NOT EXISTS "${PICO_SDK_FOLDER}")
+  set(PICO_SDK_FOLDER "${PICO_FOLDER}/pico-sdk")
+endif()
+
+set(TINYUSB_TARGET tusb)
+set(CFG_TUSB_MCU x86)
+
+add_subdirectory(${PICO_FOLDER}/pico-hid-host "${CMAKE_CURRENT_BINARY_DIR}/pico-hid-host")
+
+# Unity testing - start
+include(CTest)
+
+add_library(Unity STATIC
+  ${PICO_FOLDER}/Unity/src/unity.c
+)
+
+target_include_directories(Unity PUBLIC
+  ${PICO_FOLDER}/Unity/src
+  ${PICO_SDK_FOLDER}/lib/tinyusb/src
+  ${PICO_SDK_FOLDER}/src/rp2_common/tinyusb/include/
+  ${PICO_SDK_FOLDER}/lib/tinyusb/hw/
+  ${PICO_PROJECT_FOLDER}/src
+)
+
+add_subdirectory(suite1)

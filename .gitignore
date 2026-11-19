@@ -1,0 +1,8 @@
+_build*
+*.o
+firmware/*.uf2
+firmware/*.bin
+firmware/*.hex
+firmware/*.elf
+firmware/*.map
+*.uf2

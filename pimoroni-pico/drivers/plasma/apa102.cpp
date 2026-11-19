@@ -1,0 +1,151 @@
+#include "apa102.hpp"
+#include "common/pimoroni_common.hpp"
+#include "common/pio_pins.hpp"
+
+namespace plasma {
+
+APA102::APA102(uint num_leds, PIO pio, uint sm, uint pin_dat, uint pin_clk, uint freq, RGB* buffer) : buffer(buffer), num_leds(num_leds), pio(pio) {
+    // Claim before touching the state machine, so that a second strip - or an
+    // rp2.StateMachine - cannot be handed the one we are about to drive.
+    if(sm == SM_AUTO) {
+        sm = (uint)pio_claim_unused_sm(pio, true);
+    } else {
+        pio_sm_claim(pio, sm);
+    }
+    this->sm = sm;
+    sm_claimed = true;
+
+    // The buffer comes first, so a strip refused its pins below can still be drawn into
+    if(this->buffer == nullptr) {
+        this->buffer = new RGB[num_leds];
+        managed_buffer = true;
+    }
+
+    // Pins outside the PIO's window stop construction here, reported by pins_reachable()
+    pins_ok = pimoroni::pio_take_window(pio, sm, std::min(pin_dat, pin_clk), std::max(pin_dat, pin_clk));
+    if(!pins_ok) {
+        return;
+    }
+
+    // So do pins another state machine on the PIO drives, reported by pins_available()
+    pins_free = !pimoroni::pio_pins_driven_by_others(pio, sm, (1llu << pin_clk) | (1llu << pin_dat));
+    if(!pins_free) {
+        return;
+    }
+
+    pio_program_offset = pio_add_program(pio, &apa102_program);
+
+    // These take absolute GPIO masks and shift by the window base themselves
+    uint64_t used_pins = (1llu << pin_clk) | (1llu << pin_dat);
+    pio_sm_set_pins_with_mask64(pio, sm, 0, used_pins);
+    pio_sm_set_pindirs_with_mask64(pio, sm, ~0llu, used_pins);
+    pio_gpio_init(pio, pin_clk);
+    pio_gpio_init(pio, pin_dat);
+
+    pio_sm_config c = apa102_program_get_default_config(pio_program_offset);
+    sm_config_set_out_pins(&c, pin_dat, 1);
+    sm_config_set_sideset_pins(&c, pin_clk);
+
+    sm_config_set_out_shift(&c, false, true, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    // The PIO program transmits 1 bit every 2 execution cycles
+    float div = (float)clock_get_hz(clk_sys) / (2 * freq);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, pio_program_offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+
+    dma_channel = dma_claim_unused_channel(true);
+    dma_channel_config config = dma_channel_get_default_config(dma_channel);
+    channel_config_set_bswap(&config, true);
+    channel_config_set_dreq(&config, pio_get_dreq(pio, sm, true));
+    channel_config_set_transfer_data_size(&config, DMA_SIZE_32);
+    channel_config_set_read_increment(&config, true);
+    dma_channel_configure(dma_channel, &config, &pio->txf[sm], NULL, 0, false);
+}
+
+bool APA102::dma_timer_callback(struct repeating_timer *t) {
+    ((APA102*)t->user_data)->update();
+    return true;
+}
+
+// A strip refused its pins has no DMA channel, so it is never busy and shows nothing
+bool APA102::is_busy() {
+   return dma_channel != -1 && dma_channel_is_busy(dma_channel);
+}
+
+void APA102::update(bool blocking) {
+    if(dma_channel == -1) return;
+    if(is_busy() && !blocking) return;
+    while(is_busy()) {}; // Block waiting for DMA finish
+    pio->txf[sm] = 0x00000000; // Output the APA102 start-of-frame bytes
+    dma_channel_set_trans_count(dma_channel, num_leds, false);
+    dma_channel_set_read_addr(dma_channel, buffer, true);
+    if (!blocking) return;
+    while(is_busy()) {}; // Block waiting for DMA finish
+    // This is necessary to prevent a single LED remaining lit when clearing and updating.
+    // This code will only run in *blocking* mode since it's assumed non-blocking will be continuously updating anyway.
+    // Yes this will slow down LED updates... don't use blocking mode unless you're clearing LEDs before shutdown,
+    // or you *really* want to avoid actively driving your APA102s for some reason.
+    for(auto x = 0u; x < (num_leds / 16) + 1; x++) {
+        pio->txf[sm] = 0x00000000;
+        // Some delay is needed, since the PIO is async
+        // and this could be happening during a destructor/MicroPython soft reset
+        sleep_ms(1); // Chosen by fair dice roll
+    }
+}
+
+bool APA102::start(uint fps) {
+    stop();
+    if(dma_channel == -1) return false;
+    timer_running = add_repeating_timer_ms(-(1000 / fps), dma_timer_callback, (void*)this, &timer);
+    return timer_running;
+}
+
+bool APA102::stop() {
+    if(!timer_running) return false;
+    timer_running = false;
+    return cancel_repeating_timer(&timer);
+}
+
+void APA102::clear() {
+    for (auto i = 0u; i < num_leds; ++i) {
+        set_rgb(i, 0, 0, 0);
+    }
+}
+
+void APA102::set_hsv(uint32_t index, float h, float s, float v) {
+    float i = floor(h * 6.0f);
+    float f = h * 6.0f - i;
+    v *= 255.0f;
+    uint8_t p = v * (1.0f - s);
+    uint8_t q = v * (1.0f - f * s);
+    uint8_t t = v * (1.0f - (1.0f - f) * s);
+
+    switch (int(i) % 6) {
+      case 0: set_rgb(index, v, t, p); break;
+      case 1: set_rgb(index, q, v, p); break;
+      case 2: set_rgb(index, p, v, t); break;
+      case 3: set_rgb(index, p, q, v); break;
+      case 4: set_rgb(index, t, p, v); break;
+      case 5: set_rgb(index, v, p, q); break;
+    }
+}
+
+void APA102::set_rgb(uint32_t index, uint8_t r, uint8_t g, uint8_t b, bool gamma) {
+    if(gamma) {
+        r = pimoroni::GAMMA_8BIT[r];
+        g = pimoroni::GAMMA_8BIT[g];
+        b = pimoroni::GAMMA_8BIT[b];
+    }
+    buffer[index].rgb(r, g, b);
+}
+
+void APA102::set_brightness(uint8_t b) {
+    for (auto i = 0u; i < num_leds; ++i) {
+        buffer[i].brightness(b);
+    }
+}
+
+}
