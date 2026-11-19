@@ -13,30 +13,31 @@
 // readback diag compares against known-written values) -> EQ bypasses
 // (0x1C/0x37) -> volume/unmute (0x32/0x31).
 //
-// Clocking decision (documented for the hardware bring-up):
-//   The codec is an I2S SLAVE.  Our PIO master emits BCLK = 32 x fs
-//   (1.4112 MHz at 44100 Hz, 16-bit stereo) on GP30 and LRCK = fs on
-//   GP29; playback data goes to the codec's DSDIN/SDAI on GP31.
-//   MCLK DECISION (R3): we keep the BCLK-driven mode, which is not a
-//   home-grown pattern but the vendor's own alternate path: esp-bsp's
-//   es8311_clock_config() with mclk_from_mclk_pin = false sets R01 bit7
-//   (internal MCLK taken from the SCK/BCLK pin) and computes
-//   mclk_hz = sample_frequency * resolution * 2 = 44100*16*2 = 1411200 Hz,
-//   i.e. exactly our coefficient-table entry {1411200, 44100, pre_div 1,
-//   pre_multi 3 (x8), adc_div 1, dac_div 1, fs_mode 0, lrck 0x00/0xFF,
-//   bclk_div 4}.  No GP23 GPOUT1 MCLK, no divider rounding, MCLK/BCLK
-//   inherently phase-locked, and IN/OUT resolution must match (16/16) -
-//   which ours does.
-//   (Documented fallback if MCLK is ever wanted: CLOCK_GPOUT1 on GP23 at
-//   12.288 MHz = 256fs for 48 kHz, int.frac divider 20 + 124/256 =
-//   0.002% error; then R01 bit7 = 0 and the coefficient entry for
-//   mclk=12288000 applies.)
+// Clocking decision (R4, changed from the R3 BCLK-driven experiment):
+//   The R3 diag hardware was fully healthy per the user's photo (S44100,
+//   readback R13=0x10 R14=0x1A ok) yet the headphone jack stayed silent -
+//   so the R3 BCLK-driven codec clocking (R01 bit7 = 1) is the suspect.
+//   R4 switches to the esp-bsp DEFAULT mode: mclk_from_mclk_pin = true,
+//   i.e. the codec takes its internal MCLK from the MCLK pin (R01 bit7
+//   = 0, es8311_clock_config() lines 242-256 of the vendored reference),
+//   and we drive that pin: GP23 = CLOCK_GPOUT1 on the RP2350 (SDK
+//   clock_gpio_init mapping: GP15/GP23 -> GPOUT1), source clk_sys.
+//   fs = 44100 -> ideal MCLK = 256 x fs = 11.2896 MHz; sys = 251.75 MHz
+//   (the 640x480p60 TMDS rate) -> integer GPOUT divider 22 -> MCLK =
+//   11.4432 MHz (+1.4%).  The ES8311 divides MCLK internally with the
+//   coefficient-table entry {11289600, 44100, pre_div 1, pre_multi 0
+//   (x1), adc_div 1, dac_div 1, fs_mode 0, lrck 0x00/0xFF, bclk_div 4}
+//   and tolerates that small MCLK/fs deviation in practice.  Kept
+//   44.1 kHz + /22 as the tightest integer fit (48 kHz alternatives are
+//   worse: 12.288 MHz = sys/20.48 not integer; sys/20 = 12.5875 MHz =
+//   +2.4%).  The I2S PIO stays the BCLK/LRCK MASTER, unchanged.
 
 #include "ZxEs8311.h"
 
 #ifdef ZX_AUDIO_CODEC_ES8311
 
 #include "hardware/gpio.h"
+#include "hardware/clocks.h"
 #include "hardware/i2c.h"
 #include "pico/time.h"
 #include "pico/printf.h"
@@ -51,6 +52,12 @@
 #define ZX_ES8311_ADDR     0x18  // 7-bit I2C address (AD0 pulled low)
 #define ZX_ES8311_PWR_PIN  22    // PWR_EN# -> codec LDO CE (polarity probed)
 #define ZX_ES8311_PWR_LDO_RAMP_MS 20
+// R4: MCLK pin for the esp-bsp-default MCLK-driven codec mode.  GP23 =
+// CLOCK_GPOUT1 on the RP2350 (clock_gpio_init's GP15/GP23 -> GPOUT1
+// mapping).  Divider computed from clk_sys at init (22 at 251.75 MHz).
+#define ZX_ES8311_MCLK_PIN       23
+#define ZX_ES8311_MCLK_FS_RATIO  256u      // ideal MCLK = 256 x fs
+#define ZX_ES8311_MCLK_FS        44100u    // fs of the I2S PIO (PICO_I2S_AUDIO_FREQ)
 
 // Default hardware volume (R3): 100% = reg32 0xFF = the 0 dB top of the
 // 0..255 DAC gain range (esp-bsp es8311_voice_volume_set formula: reg32 =
@@ -74,6 +81,7 @@
 #define ES8311_SDPOUT_REG0A   0x0A  // serial data port out (ASDOUT)
 #define ES8311_SYSTEM_REG0D   0x0D  // analog power
 #define ES8311_SYSTEM_REG0E   0x0E  // ADC PGA + modulator power
+#define ES8311_SYSTEM_REG11   0x11  // system "VSEL" (datasheet default 0x7C, never written by us - readback sanity)
 #define ES8311_SYSTEM_REG12   0x12  // DAC power
 #define ES8311_SYSTEM_REG13   0x13  // output (HP drive) enable
 #define ES8311_SYSTEM_REG14   0x14  // analog input select + mic PGA enable
@@ -163,24 +171,46 @@ bool zxEs8311Init() {
   printf("ES8311: found at 0x%02X (PWR_EN# GP22 driven %s)\n",
          ZX_ES8311_ADDR, _es8311_pwr_level ? "HIGH" : "LOW");
 
+  // ---- MCLK for the codec (R4, esp-bsp-default MCLK-driven mode) ----
+  // CLOCK_GPOUT1 on GP23, source clk_sys, integer divider:
+  //   fs = 44100 -> ideal MCLK = 256 x fs = 11.2896 MHz;
+  //   sys = 251.75 MHz (640x480p60 TMDS) -> div = sys/11289600 = 22
+  //   -> MCLK = 11.4432 MHz (+1.4%), tolerated by the codec's internal
+  //   dividers (see the clocking-decision comment at the top).
+  // Started BEFORE the codec reset/power-on sequence so the chip's POR
+  // always sees a running MCLK (the esp-bsp MCLK-driven pattern).
+  {
+    const uint32_t sys_hz = clock_get_hz(clk_sys);
+    uint32_t mclk_div = sys_hz / (ZX_ES8311_MCLK_FS_RATIO * ZX_ES8311_MCLK_FS);
+    if (mclk_div < 1) mclk_div = 1; // GPOUT divider is at least 1
+    clock_gpio_init_int_frac(ZX_ES8311_MCLK_PIN,
+                             CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_SYS,
+                             mclk_div, 0);
+    printf("ES8311: MCLK GP23 GPOUT1 sys/%lu = %lu Hz (ideal %u, fs %u)\n",
+           (unsigned long)mclk_div,
+           (unsigned long)(sys_hz / mclk_div),
+           (unsigned)(ZX_ES8311_MCLK_FS_RATIO * ZX_ES8311_MCLK_FS),
+           (unsigned)ZX_ES8311_MCLK_FS);
+  }
+
   // ---- Reset (Espressif reference sequence) ----
   es_write(ES8311_RESET_REG00, 0x1F);
   sleep_ms(20);
   es_write(ES8311_RESET_REG00, 0x00);
   es_write(ES8311_RESET_REG00, 0x80); // power-on command
 
-  // ---- Clock tree: BCLK-driven (MCLK-free) mode ----
-  // R01: enable all clocks; bit7 = take the internal MCLK from the SCLK
-  // pin; no MCLK/SCLK inversions.  Internal MCLK = fs*16*2 = 1411200 Hz
-  // (= SCLK at 16-bit stereo); x8 pre-multiplier -> 256fs-equivalent.
-  es_write(ES8311_CLKM1_REG01, 0x3F | 0x80);
+  // ---- Clock tree: MCLK-driven (esp-bsp default, mclk_from_mclk_pin) ----
+  // R01: enable all clocks; bit7 = 0 -> internal MCLK from the MCLK pin
+  // (the vendor's es8311_clock_config() writes plain 0x3F in that mode);
+  // no MCLK/SCLK inversions.
+  es_write(ES8311_CLKM1_REG01, 0x3F);
 
-  // Coefficients for fs = 44100, internal MCLK = 1411200 Hz (coefficient
-  // table entry: pre_div=1, pre_multi=3 (x8), adc_div=1, dac_div=1,
+  // Coefficients for fs = 44100, MCLK = 256fs (coefficient table entry
+  // {11289600, 44100}: pre_div=1, pre_multi=0 (x1), adc_div=1, dac_div=1,
   // fs_mode=0 (single speed), lrck_h=0x00, lrck_l=0xff, bclk_div=4).
   uint8_t r02 = 0;
   es_read(ES8311_CLKM2_REG02, &r02);
-  r02 = (r02 & 0x07) | ((1 - 1) << 5) | (3 << 3); // pre-div 1, x8 pre-mult
+  r02 = (r02 & 0x07) | ((1 - 1) << 5) | (0 << 3); // pre-div 1, x1 pre-mult
   es_write(ES8311_CLKM2_REG02, r02);
   es_write(ES8311_CLKM3_REG03, (0 << 6) | 0x10);  // single speed, ADC OSR 32
   es_write(ES8311_CLKM4_REG04, 0x10);             // DAC OSR 32
@@ -225,17 +255,23 @@ bool zxEs8311Init() {
   es_write(ES8311_DAC_REG31, r31 & ~0x60); // clear the two DAC mute bits
 
 #ifdef ZX_ESDIAG
-  // E83 diag (f): readback of the DAC/HP path registers just written, via
-  // the proven repeated-START es_read.  A readback != the value written
-  // (expected: R13=0x10, R14=0x1A, R32=0xFF at 100% volume, R17=0xC8)
-  // means the I2C write was silently dropped (DDC-shared bus quirk);
-  // a readback of 0xFF itself means the read transaction failed.
+  // E83 diag (f): readback of the key registers, via the proven
+  // repeated-START es_read.  Row order (R4, 6 values): R13/R14/R32/R17
+  // (DAC/HP + ADC path, unchanged from R3) + R01/R11 (R4 clocking
+  // evidence).  Expected: R13=0x10, R14=0x1A, R32=0xFF at 100% volume,
+  // R17=0xC8, R01=0x3F (bit7 = 0 -> MCLK taken from the MCLK pin, all
+  // codec clocks on; a 0xBF/0xFF here = the codec fell back to another
+  // clock source or the write was dropped) and R11=0x7C (datasheet
+  // default of this never-written register - a wrong R11 means the
+  // read path or the chip state is off).  A readback of 0xFF itself
+  // means the read transaction failed.
   {
-    static const uint8_t rbRegs[4] = {
+    static const uint8_t rbRegs[6] = {
       ES8311_SYSTEM_REG13, ES8311_SYSTEM_REG14,
-      ES8311_DAC_REG32, ES8311_ADC_REG17
+      ES8311_DAC_REG32, ES8311_ADC_REG17,
+      ES8311_CLKM1_REG01, ES8311_SYSTEM_REG11
     };
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 6; ++i) {
       uint8_t v = 0;
       if (!es_read(rbRegs[i], &v)) v = 0xFF;
       zxEsDiagRb((uint8_t)i, v);
@@ -243,7 +279,7 @@ bool zxEs8311Init() {
   }
 #endif
 
-  printf("ES8311: playback path up: 44100Hz 16-bit I2S slave, BCLK-driven, HP out\n");
+  printf("ES8311: playback path up: 44100Hz 16-bit I2S slave, MCLK-driven (GP23 GPOUT1), HP out\n");
   return true;
 }
 

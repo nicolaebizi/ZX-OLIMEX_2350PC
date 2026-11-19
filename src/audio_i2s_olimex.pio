@@ -12,8 +12,10 @@
 ;   side-set bit 1 -> GP30 = BCLK
 ; Playback data goes to GP31 (the ES8311 DSDIN/SDAI input).
 ;
-; The ES8311 runs as an I2S slave, clocking derived from BCLK (MCLK-free
-; mode), so no MCLK output is generated.
+; The ES8311 runs as an I2S slave (R4: MCLK-driven mode - its internal
+; clocking comes from the MCLK pin GP23, driven by zxEs8311Init() from
+; CLOCK_GPOUT1); this PIO program is unchanged and remains the I2S
+; MASTER that emits BCLK and LRCK.
 ;
 ; Fifo word format (unchanged):
 ;
