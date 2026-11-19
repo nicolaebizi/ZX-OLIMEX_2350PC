@@ -28,6 +28,10 @@ zx_spectrum_audio_driver_enum_t ZxDviRenderLoopAudioDefault() {
   return PICO_DEFAULT_AUDIO;
 #elif defined(PICO_DEFAULT_AUDIO_DVI)
   return PICO_DEFAULT_AUDIO_DVI;
+#elif defined(ZX_AUDIO_PWM_DMA_DEFAULT)
+  // R7 (Olimex RP2350-PC): the zero-IRQ PWM-DMA direct-amp route is the
+  // sure boot default (the speakers); the codec/I2S stays menu-selectable.
+  return zx_spectrum_audio_driver_pwm_dma_index;
 #elif defined(PICO_HDMI_AUDIO)
   return zx_spectrum_audio_driver_hdmi_index;
 #elif defined(PICO_AUDIO_I2S)

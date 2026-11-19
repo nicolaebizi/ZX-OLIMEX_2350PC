@@ -60,6 +60,7 @@ set(zxspectrum_common_src
   ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioVol.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioPioPwm.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioPwm.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioPwmDma.cpp # R7 Olimex PWM-DMA direct-amp route (ZX_AUDIO_PWM_DMA, default OFF)
   ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioNull.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioI2s.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ZxSpectrumAudioHdmi.cpp

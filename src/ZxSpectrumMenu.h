@@ -268,6 +268,7 @@ private:
   PicoOptionText _audioPioPwmOp;
   PicoOptionText _audioPwmOp;
   PicoOptionText _audioI2sOp;
+  PicoOptionText _audioPwmDmaOp;
   PicoOptionText _audioHdmiOp;
 
   PicoOptionText _videoOp;

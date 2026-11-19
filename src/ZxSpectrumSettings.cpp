@@ -59,16 +59,22 @@ void ZxSpectrumSettings::sanitise(ZxSpectrumSettingValues *values) {
     }
 
     // Audio output
-    for(uint8_t i = 0; i <  ZX_SPECTRUM_AUDIO_DRIVER_COUNT; ++i) {
-#ifdef ZX_AUDIO_ES8311_ONLY
-      // R2 fix: on the ES8311/I2S-only targets the null driver (0) is
-      // not a wired output, but it IS in range so the generic check
-      // below passes it through — a stale SD settings.bin storing 0
-      // would re-select the null driver at every boot. Clamp the null
-      // (and any out-of-range) entry to the I2S codec index.
+    // NOTE: the array is indexed by VIDEO driver, so the loop bound is
+    // the video driver count (the old AUDIO-count bound read past the
+    // 3-entry video driver table on R7's 6 audio entries).
+    for(uint8_t i = 0; i < ZX_SPECTRUM_VIDEO_DRIVER_COUNT; ++i) {
+#ifdef ZX_AUDIO_PWM_DMA_DEFAULT
+      // R7 (Olimex RP2350-PC): the PWM-DMA direct-amp route is the boot
+      // default.  R2 fix pattern, retargeted: on this target the null
+      // driver (0) is not a wired output but IS in range, so a stale SD
+      // settings.bin storing 0 would re-select the null driver at every
+      // boot; out-of-range entries land here too.  Clamp both to the
+      // PWM-DMA index (the sure speakers route).  Stale R2-R6 bins
+      // storing the OLD i2s index (3) also land on the NEW pwm_dma
+      // index (3) through the enum renumbering.
       if (values->audioDriverDefault[i] == zx_spectrum_audio_driver_null_index ||
           values->audioDriverDefault[i] >= ZX_SPECTRUM_AUDIO_DRIVER_COUNT) {
-        values->audioDriverDefault[i] = zx_spectrum_audio_driver_i2s_index;
+        values->audioDriverDefault[i] = zx_spectrum_audio_driver_pwm_dma_index;
       }
 #else
       if (values->audioDriverDefault[i] >= ZX_SPECTRUM_AUDIO_DRIVER_COUNT) {

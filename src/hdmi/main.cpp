@@ -384,15 +384,13 @@ int main() {
   pcw_init_renderer();
   
   // Setup the default audio driver
-#ifdef ZX_AUDIO_ES8311_ONLY
-  // R2 fix: this target wires only the ES8311/I2S codec, so the boot
-  // dispatch must ALWAYS be the I2S driver — a stale SD settings.bin
-  // with audioDriver=0 (null) must never re-select the null driver at
-  // boot. Same pattern as main_auto.cpp:347.
-  zxSpectrum.setAudioDriver(zxSpectrumAudioInit(zx_spectrum_audio_driver_i2s_index));
-#else
+  // R7 (Olimex RP2350-PC): the settings.load() sanitise pass has already
+  // clamped the stored audio driver (stale SD settings.bin entries from
+  // the R2-R6 I2S-default builds land on the PWM-DMA index; null/
+  // out-of-range clamp to it too), so the plain dispatch boots the
+  // PWM-DMA direct-amp route (the sure speakers path); the I2S/ES8311
+  // codec stays selectable live from the menu.
   zxSpectrum.setAudioDriver(zxSpectrumAudioInit((zx_spectrum_audio_driver_enum_t)settings.audioDriverDefault[settings.videoDriverDefault]));
-#endif
 
   printf("Core 1 start\n");
   

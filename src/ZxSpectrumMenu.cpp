@@ -14,6 +14,8 @@
 #include "ZxSpectrumAudio.h"
 #include "ZxSpectrumAudioVol.h"
 #include "ZxSpectrumAudioDriver.h"
+#include "ZxSpectrumAudioI2s.h"
+#include "ZxSpectrumAudioPwmDma.h" // R7: the PWM-DMA direct-amp route (menu stop on I2S select)
 #include "ZxSpectrumVideoDriver.h"
 #include "ZxSpectrumDualJoystick.h"
 #ifdef ZX_VIDEO_AUTO_DETECT
@@ -382,15 +384,17 @@ ZxSpectrumMenu::ZxSpectrumMenu(
   _audioNullOp(_zx_spectrum_audio_drivers[0].name),
   _audioPioPwmOp(_zx_spectrum_audio_drivers[1].name),
   _audioPwmOp(_zx_spectrum_audio_drivers[2].name),
-#ifdef ZX_AUDIO_ES8311_ONLY
-  // Olimex RP2350-PC (phase 2): the I2S/ES8311 codec is the only audio
-  // driver wired up (the TMDS "Monitor" audio is not compiled in), so
-  // the audio-out list shows the codec entry with its role spelled out.
-  _audioI2sOp("I2S (ES8311, default)"),
+#ifdef ZX_AUDIO_PWM_DMA_DEFAULT
+  // Olimex RP2350-PC (R7): the PWM-DMA direct-amp route is the boot
+  // default (the sure speakers path); the ES8311 codec is the electrical
+  // mystery kept as the experimental entry.
+  _audioI2sOp("I2S (ES8311 - experimental)"),
+  _audioPwmDmaOp("PWM (difuzoare, default)"),
 #else
-  _audioI2sOp(_zx_spectrum_audio_drivers[3].name),
+  _audioI2sOp(_zx_spectrum_audio_drivers[4].name),
+  _audioPwmDmaOp(_zx_spectrum_audio_drivers[3].name),
 #endif
-  _audioHdmiOp(_zx_spectrum_audio_drivers[4].name), 
+  _audioHdmiOp(_zx_spectrum_audio_drivers[5].name),
 
   _videoOp("Video"),
   _videoOptions(0, 0, _wizCols, 6, _menuRowsPerItem),
@@ -1510,9 +1514,29 @@ _audioOutOptions.addOption(_audioPwmOp.addQuickKey(getQuickKey(audioOutQuickKeyI
     _wiz.pop(true);
   });
 #endif
-#ifdef PICO_AUDIO_I2S  
+#ifdef ZX_AUDIO_PWM_DMA
+// R7 (Olimex RP2350-PC): the zero-IRQ DMA-PWM speaker route, the boot
+// default.  The per-sample handler only writes the ring; one DMA
+// channel drains it into PWM5 CC on the wrap DREQ - no audio IRQs.
+// Selecting it (again) re-runs the init: the ring is re-filled with the
+// 50% mid silence, the DMA restarts, the amp is re-asserted ON.
+_audioOutOptions.addOption(_audioPwmDmaOp.addQuickKey(getQuickKey(audioOutQuickKeyIndex++)));
+  _audioPwmDmaOp.toggle([=]() {
+    pwm_dma_audio_init();
+    _zxSpectrum->setAudioDriver(&_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_pwm_dma_index]);
+    _wiz.pop(true);
+  });
+#endif
+#ifdef PICO_AUDIO_I2S
 _audioOutOptions.addOption(_audioI2sOp.addQuickKey(getQuickKey(audioOutQuickKeyIndex++)));
   _audioI2sOp.toggle([=]() {
+#ifdef ZX_AUDIO_PWM_DMA
+    // R7: park the PWM-DMA route when the codec takes over (the DMA
+    // stops draining the ring, the PWM channels idle at the 50% mid
+    // level).  The amp STAYS ON: both routes share the summed amp net
+    // (the codec keeps the HP jack + the speakers via the same net).
+    pwm_dma_audio_stop();
+#endif
     _zxSpectrum->setAudioDriver(&_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_i2s_index]);
     _wiz.pop(true);
   });
@@ -2040,15 +2064,16 @@ void ZxSpectrumMenu::loadSettings() {
   _zxSpectrum->mouse()->mouseMode(settings.mouseMode);
   _zxSpectrum->mouse()->mode(settings.mouseJoystickMode);
   _videoDriverIndex = settings.videoDriverDefault;
-  // R2 fix: after the SD-mount load (and a manual Settings→Load) the
-  // stored audioDriver could still be 0 (null) on the ES8311/I2S-only
-  // targets — re-assert the I2S codec there (the sanitise clamp is the
-  // primary guard, this is the same clamp applied on the way out).
+  // R2 fix / R7 retarget: after the SD-mount load (and a manual
+  // Settings→Load) the stored audioDriver could still be 0 (null) or
+  // out of range on the R7 Olimex target — re-assert the PWM-DMA
+  // default there (the sanitise clamp is the primary guard, this is the
+  // same clamp applied on the way out).
   uint8_t audioDriver = settings.audioDriverDefault[_videoDriverIndex];
-#ifdef ZX_AUDIO_ES8311_ONLY
+#ifdef ZX_AUDIO_PWM_DMA_DEFAULT
   if (audioDriver == zx_spectrum_audio_driver_null_index ||
       audioDriver >= ZX_SPECTRUM_AUDIO_DRIVER_COUNT) {
-    audioDriver = zx_spectrum_audio_driver_i2s_index;
+    audioDriver = zx_spectrum_audio_driver_pwm_dma_index;
   }
 #endif
   _zxSpectrum->setAudioDriver(&_zx_spectrum_audio_drivers[audioDriver]);

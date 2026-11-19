@@ -3,6 +3,7 @@
 #include "ZxSpectrumAudioDriver.h"
 #include "ZxSpectrumAudioPioPwm.h"
 #include "ZxSpectrumAudioPwm.h"
+#include "ZxSpectrumAudioPwmDma.h"
 #include "ZxSpectrumAudioHdmi.h"
 #include "ZxSpectrumAudioNull.h"
 #include "ZxSpectrumAudioI2s.h"
@@ -28,6 +29,13 @@ zx_spectrum_audio_driver_t _zx_spectrum_audio_drivers[ZX_SPECTRUM_AUDIO_DRIVER_C
     pwm_audio_ready,
     pwm_audio_handler,
     "PWM"
+  },
+  {
+    pwm_dma_audio_init,
+    pwm_dma_audio_freq,
+    pwm_dma_audio_ready,
+    pwm_dma_audio_handler,
+    "PWM-DMA"
   },
   {
     i2s_audio_init,

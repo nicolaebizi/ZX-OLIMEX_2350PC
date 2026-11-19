@@ -273,16 +273,17 @@ set(zxspectrum_olimex_rp2350pc_defines
   ZX_HAS_VGA=0
   ZX_HAS_PS2=0
   ZX_HAS_NES=0
-  # ---- Phase-2 audio: the ES8311 codec is the ONLY wired audio path
-  # (TMDS/data-island audio stays OUT: no PICO_HDMI_AUDIO anywhere, the
-  # Monitor menu entry compiles out).  PIO1 I2S master, LRCK=GP29 is the
-  # side-set base / LOWER gpio of the pair, BCLK=GP30, data out = GP31
-  # -> audio_i2s_olimex.pio program variant (ZX_AUDIO_I2S_LRCK_FIRST).
-  # The boot init sweep brings the codec up (zxEs8311Init(), PWR_EN#
-  # GP22 auto-probe + I2C0 GP32/33 addr 0x18, repeated-START es_read);
-  # boot default = I2S (ZxDviRenderLoopAudioDefault -> i2s index).
-  # Speaker amp parked OFF (SHDN# GP35 HIGH) + VOLUME GP34 static mid;
-  # no PWM-DMA, no TMDS audio on this target. ----
+  # ---- Phase-2 audio: the ES8311 codec (ZxEs8311.cpp) talks I2C0
+  # (SDA=GP32/SCL=GP33) and PIO1 for the I2S master.  PIO1 I2S master,
+  # LRCK=GP29 is the side-set base / LOWER gpio of the pair, BCLK=GP30,
+  # data out = GP31 -> audio_i2s_olimex.pio program variant
+  # (ZX_AUDIO_I2S_LRCK_FIRST).  The boot init sweep brings the codec up
+  # (zxEs8311Init(), PWR_EN# GP22 auto-probe + I2C0 GP32/33 addr 0x18,
+  # repeated-START es_read).  R7: the boot default is the PWM-DMA route
+  # (ZxDviRenderLoopAudioDefault -> pwm_dma index), the codec/I2S entry
+  # stays selectable live from the menu.  Speaker amp (SHDN# GP35) =
+  # ALWAYS on (R6/R7, both routes share the amp net); VOLUME GP34
+  # static ~70%. ----
   PICO_AUDIO_I2S=1
   PICO_AUDIO_I2S_PIO=pio1
   PICO_AUDIO_I2S_PIO_FUNC=GPIO_FUNC_PIO1
@@ -294,9 +295,20 @@ set(zxspectrum_olimex_rp2350pc_defines
   # line guarantees ZxEs8311.cpp sees it regardless of include order
   # (same value as the board header: ZX_AUDIO_CODEC_ES8311=1).
   ZX_AUDIO_CODEC_ES8311=1
-  # Menu: the audio-out list shows the single wired entry with its role
-  # spelled out ("I2S (ES8311, default)" - the boot default).
+  # Menu: the codec entry keeps its spelled-out role (now "experimental").
   ZX_AUDIO_ES8311_ONLY
+  # ---- R7 audio: the PWM-DMA direct-amp route is the boot DEFAULT (the
+  # sure speakers path; the codec's DAC is the electrical mystery, the
+  # scope comes later).  GP26 = PWM5 ch A (L), GP27 = PWM5 ch B (R), one
+  # DMA channel drains a 1024-sample packed-CC ring on DREQ_PWM_WRAP5 -
+  # ZERO audio IRQs.  GP34 = amp VOLUME static ~70% duty, GP35 = amp
+  # SHDN# LOW = the amp is ALWAYS on (both routes share the summed amp
+  # net: the codec keeps the HP jack + the speakers via the same net).
+  # The I2S/ES8311 entry stays selectable live from the menu (the boot
+  # init sweep still brings the codec up; stale SD settings clamping is
+  # keyed on ZX_AUDIO_PWM_DMA_DEFAULT). ----
+  ZX_AUDIO_PWM_DMA=1
+  ZX_AUDIO_PWM_DMA_DEFAULT
   # (board header sets the same audio flags: ZX_AUDIO_CODEC_ES8311=1,
   # ZX_AUDIO_ENABLED=1)
   ZX_AUDIO_ENABLED=1

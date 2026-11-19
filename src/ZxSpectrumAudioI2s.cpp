@@ -102,17 +102,17 @@ static inline void is2_audio_put(uint32_t x)
 void i2s_audio_init()
 {
 #ifdef ZX_AUDIO_CODEC_ES8311
-  // ---- PAM8003 speaker amp pins (R6): the codec's analog out is the
-  // summed net feeding BOTH the HP jack AND this amp, so the amp is the
-  // quickest audible test route.  GP35 = amp SHDN# (active LOW = ON) is
-  // parked HIGH = amp OFF (the sane default: if the codec-init fails at
-  // boot the speakers stay silent by design); GP34 = amp VOLUME control
-  // (analog gain input behind an on-board RC) parked ONCE at a static
-  // comfortable level = PWM duty 70% (a plain GPIO has no mid level;
-  // this PWM channel is set-and-forget, never updated by the audio path).
+  // ---- PAM8003 speaker amp pins (R7): the amp is ALWAYS ON - both
+  // audio routes share the summed amp net (the codec's analog out AND
+  // the RC-filtered PWM GP26/27 feed the same PAM8003 input), so the
+  // speakers stay live whichever driver is selected.  GP35 = amp SHDN#
+  // (active LOW = ON); GP34 = amp VOLUME control (analog gain input
+  // behind an on-board RC) parked ONCE at a static comfortable level =
+  // PWM duty ~70% (a plain GPIO has no mid level; this PWM channel is
+  // set-and-forget, never updated by the audio path).
   gpio_init(35);
   gpio_set_dir(35, GPIO_OUT);
-  gpio_put(35, 1); // SHDN# HIGH = amp off until the codec is proven up
+  gpio_put(35, 0); // SHDN# LOW = PAM8003 ON (always, R7)
   {
     const uint32_t sys_hz = clock_get_hz(clk_sys);
     const uint32_t vol_top = sys_hz / 10000;
@@ -126,14 +126,8 @@ void i2s_audio_init()
   // Phase 2 audio: codec bring-up first (the sys clock is already at the
   // final 640x480p60 TMDS rate here, so the 400 kHz I2C baudrate divider
   // is computed for the real clock).  If the codec does not answer the
-  // I2S master still runs and the amp stays OFF; nothing stalls.
-  if (zxEs8311Init()) {
-    // R6: codec up (the R5 chain: I2C ACK + registers + BCLK-driven
-    // clocking + samples flowing) -> enable the speaker amp now: the
-    // codec's DAC out (the summed net) is the amp's source, so from here
-    // on the speakers carry the same audio as the HP jack.
-    gpio_put(35, 0); // SHDN# LOW = PAM8003 ON
-  }
+  // I2S master still runs; audio is simply inaudible, nothing stalls -
+  // and the amp stays ON for the PWM-DMA route either way (R7).
 #endif
   gpio_set_function(PICO_AUDIO_I2S_DATA, PICO_AUDIO_I2S_PIO_FUNC);
   gpio_set_function(PICO_AUDIO_I2S_BCLK, PICO_AUDIO_I2S_PIO_FUNC);
