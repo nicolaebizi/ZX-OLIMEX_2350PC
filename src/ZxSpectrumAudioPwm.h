@@ -6,7 +6,11 @@
 
 // Default to hardware PWM
 // TODO This is messy - force a choice in makefile
-#if !defined(PICO_PIO_PWM_AUDIO) && !defined(PICO_AUDIO_I2S) && !defined(PICO_HDMI_AUDIO)
+// ZX_AUDIO_NULL_ONLY: targets with no physical audio path at all (e.g.
+// Olimex RP2350-PC phase 1, ES8311 codec in a later phase) opt out of the
+// auto-selection below; every audio driver then compiles down to the null
+// driver.
+#if !defined(PICO_PIO_PWM_AUDIO) && !defined(PICO_AUDIO_I2S) && !defined(PICO_HDMI_AUDIO) && !defined(ZX_AUDIO_NULL_ONLY)
 #define PICO_PWM_AUDIO
 #endif
 
