@@ -3,21 +3,30 @@
 //
 // ES8311 register bring-up for the Olimex RP2350-PC (phase 2, playback).
 //
-// Reference: Everest ES8311 datasheet register map + the vendor-maintained
-// init sequence in Espressif's esp-bsp components/es8311/es8311.c (the
-// structure here follows it verbatim: reset -> clock tree -> serial port
-// -> analog power -> DAC path -> volume/unmute).
+// Reference (R3): the vendor-proven init sequence, ported from Espressif's
+// esp-bsp es8311.c verbatim (saved unmodified in
+// docs/audio/es8311_esp-bsp_reference.c, fetched 2026-11-19 from
+// https://raw.githubusercontent.com/espressif/esp-bsp/master/components/es8311/es8311.c).
+// Order: reset -> clock tree -> serial port -> analog power (0x0D/0x0E) ->
+// DAC power + HP drive (0x12/0x13) -> mic defaults (0x14/0x17, from the
+// vendor's es8311_microphone_config, written explicitly so the E83C
+// readback diag compares against known-written values) -> EQ bypasses
+// (0x1C/0x37) -> volume/unmute (0x32/0x31).
 //
 // Clocking decision (documented for the hardware bring-up):
 //   The codec is an I2S SLAVE.  Our PIO master emits BCLK = 32 x fs
 //   (1.4112 MHz at 44100 Hz, 16-bit stereo) on GP30 and LRCK = fs on
 //   GP29; playback data goes to the codec's DSDIN/SDAI on GP31.
-//   ES8311 supports operating without MCLK: R01 bit7 selects the SCLK
-//   pin as the source of the internal clock tree.  With 16-bit stereo
-//   the internal MCLK equals SCLK exactly (fs*16*2 = 1.4112 MHz), and
-//   the pre-multiplier (x8) raises it to the 256fs-equivalent the DAC
-//   needs.  This is the robust option: no GP23 GPOUT1 MCLK, no divider
-//   rounding, and MCLK/BCLK are inherently phase-locked.
+//   MCLK DECISION (R3): we keep the BCLK-driven mode, which is not a
+//   home-grown pattern but the vendor's own alternate path: esp-bsp's
+//   es8311_clock_config() with mclk_from_mclk_pin = false sets R01 bit7
+//   (internal MCLK taken from the SCK/BCLK pin) and computes
+//   mclk_hz = sample_frequency * resolution * 2 = 44100*16*2 = 1411200 Hz,
+//   i.e. exactly our coefficient-table entry {1411200, 44100, pre_div 1,
+//   pre_multi 3 (x8), adc_div 1, dac_div 1, fs_mode 0, lrck 0x00/0xFF,
+//   bclk_div 4}.  No GP23 GPOUT1 MCLK, no divider rounding, MCLK/BCLK
+//   inherently phase-locked, and IN/OUT resolution must match (16/16) -
+//   which ours does.
 //   (Documented fallback if MCLK is ever wanted: CLOCK_GPOUT1 on GP23 at
 //   12.288 MHz = 256fs for 48 kHz, int.frac divider 20 + 124/256 =
 //   0.002% error; then R01 bit7 = 0 and the coefficient entry for
@@ -31,6 +40,9 @@
 #include "hardware/i2c.h"
 #include "pico/time.h"
 #include "pico/printf.h"
+#ifdef ZX_ESDIAG
+#include "ZxEsDiag.h" // E83 diag (a)(b)(c): probe + reg-write evidence
+#endif
 
 // ---- Board wiring (auditor-verified, Olimex RP2350-PC Rev.A) ----
 #define ZX_ES8311_I2C      i2c0
@@ -40,9 +52,12 @@
 #define ZX_ES8311_PWR_PIN  22    // PWR_EN# -> codec LDO CE (polarity probed)
 #define ZX_ES8311_PWR_LDO_RAMP_MS 20
 
-// Modest default hardware volume: 50% of the 0..255 DAC gain range.
+// Default hardware volume (R3): 100% = reg32 0xFF = the 0 dB top of the
+// 0..255 DAC gain range (esp-bsp es8311_voice_volume_set formula: reg32 =
+// percent*256/100 - 1).  The HP path is the fault under test, so the
+// codec starts at full DAC gain; the menu volume trims from there.
 #ifndef ZX_ES8311_DEFAULT_VOLUME_PERCENT
-#define ZX_ES8311_DEFAULT_VOLUME_PERCENT 50
+#define ZX_ES8311_DEFAULT_VOLUME_PERCENT 100
 #endif
 
 // ---- ES8311 register map (datasheet) ----
@@ -61,6 +76,9 @@
 #define ES8311_SYSTEM_REG0E   0x0E  // ADC PGA + modulator power
 #define ES8311_SYSTEM_REG12   0x12  // DAC power
 #define ES8311_SYSTEM_REG13   0x13  // output (HP drive) enable
+#define ES8311_SYSTEM_REG14   0x14  // analog input select + mic PGA enable
+#define ES8311_ADC_REG16      0x16  // ADC gain scale
+#define ES8311_ADC_REG17      0x17  // ADC gain (vendor default 0xC8)
 #define ES8311_ADC_REG1C      0x1C  // ADC EQ + DC-offset cancel
 #define ES8311_DAC_REG31      0x31  // DAC mute control
 #define ES8311_DAC_REG32      0x32  // DAC volume (0 = min, 255 = max)
@@ -71,7 +89,11 @@ static int _es8311_pwr_level = -1; // -1 unknown, 0/1 = the working polarity
 
 static inline bool es_write(uint8_t reg, uint8_t val) {
   const uint8_t buf[2] = { reg, val };
-  return i2c_write_blocking(ZX_ES8311_I2C, ZX_ES8311_ADDR, buf, 2, false) == 2;
+  const bool ok = i2c_write_blocking(ZX_ES8311_I2C, ZX_ES8311_ADDR, buf, 2, false) == 2;
+#ifdef ZX_ESDIAG
+  zxEsDiagWr(reg, ok); // E83 diag (c): write count + first-failure register
+#endif
+  return ok;
 }
 
 static inline bool es_read(uint8_t reg, uint8_t *val) {
@@ -90,6 +112,14 @@ static bool es8311_probe() {
 
 bool zxEs8311Present() {
   return _es8311_present;
+}
+
+// Belt-and-braces menu note support (ungated): 0xFF = neither GP22
+// polarity ever got an I2C ACK at 0x18 (power-domain question), else the
+// working PWR_EN# polarity (0/1).  Lets the menu show "E83: PWR?" without
+// any diag build.
+uint8_t zxEs8311PwrProbe() {
+  return (_es8311_pwr_level >= 0) ? (uint8_t)_es8311_pwr_level : 0xFF;
 }
 
 bool zxEs8311Init() {
@@ -115,8 +145,16 @@ bool zxEs8311Init() {
     gpio_put(ZX_ES8311_PWR_PIN, pwr_levels[i]);
     sleep_ms(ZX_ES8311_PWR_LDO_RAMP_MS); // LDO ramp + codec power-on reset
     _es8311_present = es8311_probe();
+#ifdef ZX_ESDIAG
+    // E83 diag (a): the GP22 polarity whose probe got an I2C ACK
+    if (_es8311_present) zxEsDiagPwr((uint8_t)pwr_levels[i]);
+#endif
     if (_es8311_present) _es8311_pwr_level = pwr_levels[i];
   }
+#ifdef ZX_ESDIAG
+  zxEsDiagAck(_es8311_present); // E83 diag (b): final I2C ACK state at 0x18
+  if (!_es8311_present) zxEsDiagPwrNone(); // E83 diag (a): neither ACKed
+#endif
   if (!_es8311_present) {
     printf("ES8311: no codec answered at 0x%02X on I2C0 (GP22 probed HIGH and LOW)\n",
            ZX_ES8311_ADDR);
@@ -164,13 +202,18 @@ bool zxEs8311Init() {
   es_write(ES8311_SDPIN_REG09, 0x0C);  // in: I2S format, 16-bit (bits[3:2]=11)
   es_write(ES8311_SDPOUT_REG0A, 0x0C); // out: I2S format, 16-bit
 
-  // ---- Analog power: DAC path on (playback phase), ADC stays off ----
-  es_write(ES8311_SYSTEM_REG0D, 0x01); // power up analog circuitry
-  es_write(ES8311_SYSTEM_REG0E, 0x00); // ADC PGA/modulator stay off (mic later)
-  es_write(ES8311_SYSTEM_REG12, 0x00); // power up DAC
-  es_write(ES8311_SYSTEM_REG13, 0x10); // enable output to HP drive
+  // ---- Analog power: DAC path on (playback phase), per esp-bsp verbatim ----
+  es_write(ES8311_SYSTEM_REG0D, 0x01); // power up analog circuitry - NOT default
+  es_write(ES8311_SYSTEM_REG0E, 0x02); // enable analog PGA, enable ADC modulator (esp-bsp value)
+  es_write(ES8311_SYSTEM_REG12, 0x00); // power-up DAC - NOT default
+  es_write(ES8311_SYSTEM_REG13, 0x10); // enable output to HP drive - NOT default
+  // Mic-path defaults from the vendor's es8311_microphone_config(), written
+  // unconditionally like esp-bsp board bring-up does, so the E83C readback
+  // diag (R14/R17) always compares against known-written values.
+  es_write(ES8311_SYSTEM_REG14, 0x1A); // enable analog MIC, max PGA gain
+  es_write(ES8311_ADC_REG17, 0xC8);    // ADC gain (vendor value)
   es_write(ES8311_ADC_REG1C, 0x6A);    // ADC EQ bypass, digital DC cancel
-  es_write(ES8311_DAC_REG37, 0x08);    // bypass DAC equalizer
+  es_write(ES8311_DAC_REG37, 0x08);    // bypass DAC equalizer - NOT default
 
   // ---- Volume (modest default) + DAC unmute ----
   const int percent = ZX_ES8311_DEFAULT_VOLUME_PERCENT;
@@ -181,6 +224,25 @@ bool zxEs8311Init() {
   es_read(ES8311_DAC_REG31, &r31);
   es_write(ES8311_DAC_REG31, r31 & ~0x60); // clear the two DAC mute bits
 
+#ifdef ZX_ESDIAG
+  // E83 diag (f): readback of the DAC/HP path registers just written, via
+  // the proven repeated-START es_read.  A readback != the value written
+  // (expected: R13=0x10, R14=0x1A, R32=0xFF at 100% volume, R17=0xC8)
+  // means the I2C write was silently dropped (DDC-shared bus quirk);
+  // a readback of 0xFF itself means the read transaction failed.
+  {
+    static const uint8_t rbRegs[4] = {
+      ES8311_SYSTEM_REG13, ES8311_SYSTEM_REG14,
+      ES8311_DAC_REG32, ES8311_ADC_REG17
+    };
+    for (int i = 0; i < 4; ++i) {
+      uint8_t v = 0;
+      if (!es_read(rbRegs[i], &v)) v = 0xFF;
+      zxEsDiagRb((uint8_t)i, v);
+    }
+  }
+#endif
+
   printf("ES8311: playback path up: 44100Hz 16-bit I2S slave, BCLK-driven, HP out\n");
   return true;
 }
@@ -189,5 +251,6 @@ bool zxEs8311Init() {
 
 bool zxEs8311Init() { return false; }
 bool zxEs8311Present() { return false; }
+uint8_t zxEs8311PwrProbe() { return 0xFF; }
 
 #endif

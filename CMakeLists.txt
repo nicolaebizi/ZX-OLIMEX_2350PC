@@ -61,6 +61,15 @@ if(ZX_CZDIAG)
   add_compile_definitions(ZX_CZDIAG=1)
 endif()
 
+# Olimex R1 ES8311/I2S audio diag row ("E83: P.. A.. R.. S.. M..") in the
+# menu: default OFF, entirely compiled out (struct, counters, row) unless
+# the build passes -DZX_ESDIAG=ON.  DEBUG build only: on-screen evidence
+# (user has no UART) for the "menu says I2S, headphone jack silent" fault.
+option(ZX_ESDIAG "Show the ES8311/I2S audio diag line in the menu (debug)" OFF)
+if(ZX_ESDIAG)
+  add_compile_definitions(ZX_ESDIAG=1)
+endif()
+
 # CUB-Z DVI/HDMI display path: ON by default (M1-HDMI and every other DVI
 # target keep the CUB-Z over HDMI).  The M2-AUTO target (the VGA+DVI dual
 # pipeline, the tightest heap) overrides it to OFF in

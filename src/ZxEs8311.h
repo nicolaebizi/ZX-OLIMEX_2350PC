@@ -3,6 +3,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // On-board ES8311 low-power audio codec bring-up for the Olimex RP2350-PC.
 //
@@ -27,3 +28,8 @@ bool zxEs8311Init();
 
 // Result of the last zxEs8311Init() probe.
 bool zxEs8311Present();
+
+// Ungated belt-and-braces probe result: 0xFF = neither PWR_EN# (GP22)
+// polarity ever got an I2C ACK at 0x18, else the working polarity (0/1).
+// Feeds the ungated menu note "E83: PWR?" (no diag build needed).
+uint8_t zxEs8311PwrProbe();

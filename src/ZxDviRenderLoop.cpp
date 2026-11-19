@@ -3,6 +3,9 @@
 #include "ZxDviRenderLoop.h"
 #include "ZxSpectrumPrepareDviScanline.h"
 #include "ZxCzDiag.h"
+#ifdef ZX_ESDIAG
+#include "ZxEsDiag.h" // E83 diag (d): per-second sample-push latch
+#endif
 #include "hardware/clocks.h"
 #include "PicoCharRenderer.h"
 
@@ -167,6 +170,9 @@ void __not_in_flash_func(ZxDviRenderLoop)(
        frames++;
 #ifdef ZX_CZDIAG
         zxCzDiagFrameEnd(); // CZD diag (a): second latch on the frame wrap
+#endif
+#ifdef ZX_ESDIAG
+        zxEsDiagFrameEnd(); // E83 diag (d): per-second sample-push latch
 #endif
         if (!ringoMode) {
           screenPtr = zxSpectrum.screenPtr();

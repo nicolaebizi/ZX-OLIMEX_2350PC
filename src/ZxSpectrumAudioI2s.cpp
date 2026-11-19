@@ -57,6 +57,10 @@ bool __not_in_flash_func(i2s_audio_ready)()
 #include "ZxEs8311.h"
 #include "hardware/pwm.h"
 #endif
+#ifdef ZX_ESDIAG
+// E83 diag (d)(e): live PIO FIFO sample pushes + SM running flag
+#include "ZxEsDiag.h"
+#endif
 
 #ifndef PICO_I2S_AUDIO_FREQ
 #define PICO_I2S_AUDIO_FREQ 44100
@@ -136,6 +140,9 @@ void i2s_audio_init()
   I2S_PIO_PROGRAM_INIT(PICO_AUDIO_I2S_PIO, i2s_audio_sm, offset, PICO_AUDIO_I2S_DATA, PICO_AUDIO_I2S_BCLK);
   update_pio_frequency(PICO_I2S_AUDIO_FREQ, PICO_AUDIO_I2S_PIO, i2s_audio_sm);
   pio_sm_set_enabled(PICO_AUDIO_I2S_PIO, i2s_audio_sm, true);
+#ifdef ZX_ESDIAG
+  zxEsDiagSmRun(true); // E83 diag (e): the I2S PIO SM is running
+#endif
 }
 
 uint32_t i2s_audio_freq() {
@@ -154,6 +161,9 @@ void __not_in_flash_func(i2s_audio_handler)(uint32_t vA, uint32_t vB, uint32_t v
   if (audio_ready())
   {
     is2_audio_put((ll << 16) | rr);
+#ifdef ZX_ESDIAG
+    zxEsDiagSample(); // E83 diag (d): one stereo sample -> PIO FIFO
+#endif
   }
 
 #ifdef ZX_AUDIO_DVI_MIRROR
