@@ -1,0 +1,65 @@
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+; audio_i2s_olimex - the Olimex RP2350-PC variant of audio_i2s.pio.
+;
+; Identical I2S transmit behaviour and timing to audio_i2s.pio, but the
+; two side-set pins swap ROLES: on this board the word select (LRCK)
+; sits on the LOWER GPIO (GP29) and the bit clock (BCLK) on the next
+; one (GP30), while the shared audio_i2s.pio assumes BCLK on the base
+; pin.  With .side_set 2 at clock_pin_base=29:
+;   side-set bit 0 -> GP29 = LRCK
+;   side-set bit 1 -> GP30 = BCLK
+; Playback data goes to GP31 (the ES8311 DSDIN/SDAI input).
+;
+; The ES8311 runs as an I2S slave, clocking derived from BCLK (MCLK-free
+; mode), so no MCLK output is generated.
+;
+; Fifo word format (unchanged):
+;
+; | 31   :   16 | 15   :    0 |
+; | sample ws=0 | sample ws=1 |
+;
+; Data is output at 1 bit per 6 clock cycles (3 per BCLK half period);
+; use the clock divider to set BCLK = 32 x fs.
+;
+.program audio_i2s_olimex
+.side_set 2
+
+                    ;        /--- BCLK (side-set bit 1)
+                    ;        |/-- LRCK (side-set bit 0)
+bitloop1:           ;        ||
+    out pins, 1       side 0b01 [2]
+    jmp y-- bitloop1  side 0b11 [2]
+    out pins, 1       side 0b01 [2]
+    set y, 14         side 0b11 [2]
+
+bitloop0:
+    out pins, 1       side 0b00 [2]
+    jmp y-- bitloop0  side 0b10 [2]
+    out pins, 1       side 0b00 [2]
+public entry_point:
+    pull noblock      side 0b11
+    mov x, osr        side 0b11
+    set y, 14         side 0b11
+
+% c-sdk {
+
+static inline void audio_i2s_olimex_program_init(PIO pio, uint sm, uint offset, uint data_pin, uint clock_pin_base) {
+    pio_sm_config sm_config = audio_i2s_olimex_program_get_default_config(offset);
+
+    sm_config_set_out_pins(&sm_config, data_pin, 1);
+    sm_config_set_sideset_pins(&sm_config, clock_pin_base);
+    sm_config_set_out_shift(&sm_config, false, false, 32);
+    sm_config_set_fifo_join(&sm_config, PIO_FIFO_JOIN_TX);
+
+    pio_sm_init(pio, sm, offset, &sm_config);
+
+    uint pin_mask = (1u << data_pin) | (3u << clock_pin_base);
+    pio_sm_set_pindirs_with_mask(pio, sm, pin_mask, pin_mask);
+    pio_sm_set_pins(pio, sm, 0); // clear pins
+
+    pio_sm_exec(pio, sm, pio_encode_jmp(offset + audio_i2s_olimex_offset_entry_point));
+}
+
+%}

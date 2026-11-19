@@ -59,7 +59,13 @@
 #define ZX_HAS_VGA 0
 #define ZX_HAS_PS2 0
 #define ZX_HAS_NES 0
-#define ZX_AUDIO_ENABLED 0
+// Phase 2: the ES8311 codec IS wired up (playback via the HP jack).
+// Audio route: PIO1 I2S master -> ES8311 (slave, BCLK-driven MCLK-free
+// mode) -> OUTP/OUTN headphone jack.  The PAM8003 speaker amp and the
+// RC-filtered PWM path (GP26/27) are NOT touched in this phase (the amp
+// is parked OFF: SHDN# GP35 HIGH, VOLUME GP34 static mid).
+#define ZX_AUDIO_CODEC_ES8311 1
+#define ZX_AUDIO_ENABLED 1
 
 // ---------------------------------------------------------------------
 // User LED

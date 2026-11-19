@@ -378,7 +378,14 @@ ZxSpectrumMenu::ZxSpectrumMenu(
   _audioNullOp(_zx_spectrum_audio_drivers[0].name),
   _audioPioPwmOp(_zx_spectrum_audio_drivers[1].name),
   _audioPwmOp(_zx_spectrum_audio_drivers[2].name),
+#ifdef ZX_AUDIO_ES8311_ONLY
+  // Olimex RP2350-PC (phase 2): the I2S/ES8311 codec is the only audio
+  // driver wired up (the TMDS "Monitor" audio is not compiled in), so
+  // the audio-out list shows the codec entry with its role spelled out.
+  _audioI2sOp("I2S (ES8311, default)"),
+#else
   _audioI2sOp(_zx_spectrum_audio_drivers[3].name),
+#endif
   _audioHdmiOp(_zx_spectrum_audio_drivers[4].name), 
 
   _videoOp("Video"),

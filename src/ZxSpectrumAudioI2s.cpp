@@ -28,7 +28,19 @@ bool __not_in_flash_func(i2s_audio_ready)()
 
 #else
 
+#ifdef ZX_AUDIO_I2S_LRCK_FIRST
+// Boards whose LRCK sits on the LOWER GPIO of the adjacent BCLK/LRCK
+// pair (Olimex RP2350-PC: LRCK=GP29, BCLK=GP30) - the side-set bit roles
+// are swapped in this program variant (bit0 = LRCK, bit1 = BCLK).
+// PICO_AUDIO_I2S_BCLK is the side-set BASE pin (LRCK); BCLK = base + 1.
+#include "audio_i2s_olimex.pio.h"
+#define I2S_PIO_PROGRAM audio_i2s_olimex_program
+#define I2S_PIO_PROGRAM_INIT audio_i2s_olimex_program_init
+#else
 #include "audio_i2s.pio.h"
+#define I2S_PIO_PROGRAM audio_i2s_program
+#define I2S_PIO_PROGRAM_INIT audio_i2s_program_init
+#endif
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 #include "ZxSpectrumAudioVol.h"
@@ -37,6 +49,13 @@ bool __not_in_flash_func(i2s_audio_ready)()
 // Mirror every I2S stereo sample into the DVI (HDMI) audio ring as well.
 // No-op unless the DVI video pipeline is running (guarded inside).
 #include "ZxSpectrumAudioHdmi.h"
+#endif
+#ifdef ZX_AUDIO_CODEC_ES8311
+// Olimex RP2350-PC phase 2: bring the on-board ES8311 up (power LDO via
+// PWR_EN# GP22, I2C0 @ GP32/33 addr 0x18, BCLK-driven clocking, DAC path
+// unmuted) before the I2S master starts pushing samples to DSDIN=GP31.
+#include "ZxEs8311.h"
+#include "hardware/pwm.h"
 #endif
 
 #ifndef PICO_I2S_AUDIO_FREQ
@@ -78,16 +97,43 @@ static inline void is2_audio_put(uint32_t x)
 
 void i2s_audio_init()
 {
+#ifdef ZX_AUDIO_CODEC_ES8311
+  // ---- PAM8003 speaker amp pins, parked for the codec/headphone phase
+  // (the speaker path stays unused until the later PWM phase): GP35 =
+  // amp SHDN# (LOW = amp on) driven HIGH = the speaker amp stays OFF;
+  // GP34 = amp VOLUME control (analog gain input behind an on-board RC)
+  // parked ONCE at a static mid level = PWM duty 50% (a plain GPIO has
+  // no mid level; this PWM channel is set-and-forget, never updated by
+  // the audio path).
+  gpio_init(35);
+  gpio_set_dir(35, GPIO_OUT);
+  gpio_put(35, 1); // SHDN# HIGH = amp off
+  {
+    const uint32_t sys_hz = clock_get_hz(clk_sys);
+    const uint32_t vol_top = sys_hz / 10000;
+    const uint vol_slice = pwm_gpio_to_slice_num(34);
+    pwm_config vcfg = pwm_get_default_config();
+    pwm_config_set_wrap(&vcfg, vol_top);
+    pwm_init(vol_slice, &vcfg, true);
+    pwm_set_chan_level(vol_slice, PWM_CHAN_A, (vol_top + 1) / 2); // static mid
+    gpio_set_function(34, GPIO_FUNC_PWM);
+  }
+  // Phase 2 audio: codec bring-up first (the sys clock is already at the
+  // final 640x480p60 TMDS rate here, so the 400 kHz I2C baudrate divider
+  // is computed for the real clock).  If the codec does not answer the
+  // I2S master still runs; audio is simply inaudible, nothing stalls.
+  zxEs8311Init();
+#endif
   gpio_set_function(PICO_AUDIO_I2S_DATA, PICO_AUDIO_I2S_PIO_FUNC);
   gpio_set_function(PICO_AUDIO_I2S_BCLK, PICO_AUDIO_I2S_PIO_FUNC);
   gpio_set_function(PICO_AUDIO_I2S_BCLK + 1, PICO_AUDIO_I2S_PIO_FUNC);
-  uint offset = pio_add_program(PICO_AUDIO_I2S_PIO, &audio_i2s_program);
+  uint offset = pio_add_program(PICO_AUDIO_I2S_PIO, &I2S_PIO_PROGRAM);
 #ifdef PICO_AUDIO_I2S_SM
   i2s_audio_sm = PICO_AUDIO_I2S_SM;
 #else
   i2s_audio_sm = pio_claim_unused_sm(PICO_AUDIO_I2S_PIO, true);
 #endif
-  audio_i2s_program_init(PICO_AUDIO_I2S_PIO, i2s_audio_sm, offset, PICO_AUDIO_I2S_DATA, PICO_AUDIO_I2S_BCLK);
+  I2S_PIO_PROGRAM_INIT(PICO_AUDIO_I2S_PIO, i2s_audio_sm, offset, PICO_AUDIO_I2S_DATA, PICO_AUDIO_I2S_BCLK);
   update_pio_frequency(PICO_I2S_AUDIO_FREQ, PICO_AUDIO_I2S_PIO, i2s_audio_sm);
   pio_sm_set_enabled(PICO_AUDIO_I2S_PIO, i2s_audio_sm, true);
 }

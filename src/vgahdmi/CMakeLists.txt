@@ -194,6 +194,7 @@ pico_add_extra_outputs(ZX-MURMULATOR2_VGA_HDMI_AUTO_640x480x60Hz)
 
 set(zxspectrum_olimex_rp2350pc_src
   ${CMAKE_CURRENT_LIST_DIR}/../hdmi/main.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/../ZxEs8311.cpp # ES8311 codec bring-up (real body, phase 4 fix)
   ${zxspectrum_dvi_src}
 )
 
@@ -211,6 +212,9 @@ target_link_libraries(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz
   tinyusb_board
   pico_emu_utils
   pico_dvi_menu
+  # Phase-2 audio: the ES8311 codec bring-up (ZxEs8311.cpp) talks I2C0
+  # (SDA=GP32/SCL=GP33) and PIO1 for the I2S master.
+  hardware_i2c
 )
 
 # The common sources include the PIO header stubs (pwm.pio.h, audio_i2s.pio.h,
@@ -218,6 +222,14 @@ target_link_libraries(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz
 # the header generation is inert without the corresponding PICO_AUDIO_*
 # defines.
 zxspectrum_generate_pio_headers(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz)
+
+# The Olimex audio pins are LRCK=GP29 (LOWER gpio) / BCLK=GP30 / DSDIN
+# data=GP31, so the audio_i2s.pio side-set roles need swapping: generate
+# the olimex variant header for this target only (shared by no other
+# target; inert unless ZX_AUDIO_I2S_LRCK_FIRST selects it).
+pico_generate_pio_header(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz
+  ${CMAKE_CURRENT_LIST_DIR}/../audio_i2s_olimex.pio
+)
 
 pico_enable_stdio_usb(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz 0)
 pico_enable_stdio_uart(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz 1)
@@ -261,10 +273,33 @@ set(zxspectrum_olimex_rp2350pc_defines
   ZX_HAS_VGA=0
   ZX_HAS_PS2=0
   ZX_HAS_NES=0
-  # ---- Phase-1 audio state: EVERY audio driver compiles to the null
-  # stub (no PWM, no I2S, no codec, no TMDS audio on this target) ----
-  ZX_AUDIO_ENABLED=0
-  ZX_AUDIO_NULL_ONLY
+  # ---- Phase-2 audio: the ES8311 codec is the ONLY wired audio path
+  # (TMDS/data-island audio stays OUT: no PICO_HDMI_AUDIO anywhere, the
+  # Monitor menu entry compiles out).  PIO1 I2S master, LRCK=GP29 is the
+  # side-set base / LOWER gpio of the pair, BCLK=GP30, data out = GP31
+  # -> audio_i2s_olimex.pio program variant (ZX_AUDIO_I2S_LRCK_FIRST).
+  # The boot init sweep brings the codec up (zxEs8311Init(), PWR_EN#
+  # GP22 auto-probe + I2C0 GP32/33 addr 0x18, repeated-START es_read);
+  # boot default = I2S (ZxDviRenderLoopAudioDefault -> i2s index).
+  # Speaker amp parked OFF (SHDN# GP35 HIGH) + VOLUME GP34 static mid;
+  # no PWM-DMA, no TMDS audio on this target. ----
+  PICO_AUDIO_I2S=1
+  PICO_AUDIO_I2S_PIO=pio1
+  PICO_AUDIO_I2S_PIO_FUNC=GPIO_FUNC_PIO1
+  PICO_AUDIO_I2S_DATA=31
+  PICO_AUDIO_I2S_BCLK=29
+  ZX_AUDIO_I2S_LRCK_FIRST
+  PICO_I2S_AUDIO_FREQ=44100
+  # ES8311 codec bring-up compiled for real: defining it on the command
+  # line guarantees ZxEs8311.cpp sees it regardless of include order
+  # (same value as the board header: ZX_AUDIO_CODEC_ES8311=1).
+  ZX_AUDIO_CODEC_ES8311=1
+  # Menu: the audio-out list shows the single wired entry with its role
+  # spelled out ("I2S (ES8311, default)" - the boot default).
+  ZX_AUDIO_ES8311_ONLY
+  # (board header sets the same audio flags: ZX_AUDIO_CODEC_ES8311=1,
+  # ZX_AUDIO_ENABLED=1)
+  ZX_AUDIO_ENABLED=1
 )
 
 target_compile_definitions(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz PRIVATE
