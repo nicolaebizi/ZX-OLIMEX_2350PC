@@ -96,15 +96,7 @@
 #define OLIMEX_RP2350PC_DVI_LANE1_PIN  18 // D1+ / D1- on GP19
 
 // ---------------------------------------------------------------------
-// PSRAM (R16: wired up, Robson-style).  APS6404L-3SQR-SN 8MB QSPI PSRAM,
-// CS on QMI_CS1n (GP8), sharing the QSPI CLK/SD0-3 with the boot flash,
-// 10k pull-up on R78.  The init is a faithful port of Paul Robson's
-// rp2350-modules PSRAM code (src/ZxPsram.cpp): it runs at RUNTIME, after
-// the video init raises clk_sys to the 251.75MHz TMDS rate, computing the
-// QMI M1/M0 timing from the LIVE system clock.  NO SDK pre-main stage:
-// no PICO_PSRAM_* defines, no hardware_psram link, no devinfo writes.
-// NO variables are placed in PSRAM in R16 (no BSS/heap relocation yet) -
-// init + verify only.
+// PSRAM (later phase - never driven by the phase-1 firmware)
 // ---------------------------------------------------------------------
 #define OLIMEX_RP2350PC_PSRAM_CS_PIN 8 // QMI_CS1n, 8MB APS6404
 
