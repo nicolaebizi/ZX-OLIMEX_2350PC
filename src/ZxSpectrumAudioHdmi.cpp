@@ -59,13 +59,43 @@ void hdmi_audio_init()
   dvi_get_blank_settings(&dvi0)->top    = 0;
   dvi_get_blank_settings(&dvi0)->bottom = 0;
   dvi_audio_sample_buffer_set(&dvi0, audio_buffer, AUDIO_BUFFER_SIZE);
-  dvi_set_audio_freq(
-    &dvi0, 
-    PICO_HDMI_AUDIO_FREQ, 
-    dvi0.timing->bit_clk_khz*HDMI_N/(PICO_HDMI_AUDIO_FREQ/100)/128,
-    HDMI_N
-  );
+  // R9 (Olimex): dvi_set_audio_freq -> dvi_enable_data_island REBUILDS
+  // the 5 scanline DMA lists.  That is only safe BEFORE dvi_start (the
+  // boot audio-driver sweep runs from main() before core1 launches, so
+  // the first call here happens while no DMA chain / scanline IRQ is
+  // live).  A later menu select runs with the DVI pipeline live on
+  // core1: a concurrent _dvi_load_dma_op could load a half-rebuilt
+  // list, so the rebuild must NOT be repeated — keep the CTS/N config
+  // from boot and only re-attach the sample ring.
+  if (!dvi0.audio_freq) {
+    dvi_set_audio_freq(
+      &dvi0, 
+      PICO_HDMI_AUDIO_FREQ, 
+      dvi0.timing->bit_clk_khz*HDMI_N/(PICO_HDMI_AUDIO_FREQ/100)/128,
+      HDMI_N
+    );
+  }
+  // Pre-fill the ring with centred silence: a starved ring plays
+  // digital silence (data_packet.c zero-fills the missing samples), so
+  // the monitor is silent until the first real samples are pushed.
   increase_write_pointer(&dvi0.audio_ring, get_write_size(&dvi0.audio_ring, true));
+}
+
+// R9 silence-on-pause (same dispatch pattern as pwm_dma_audio_silence /
+// i2s_audio_silence): the emulation is not stepping (menu shown /
+// snapshot transition), so no per-sample pushes reach the ring.  The
+// scanline IRQ keeps draining it at 44.1 kHz and zero-fills the missing
+// samples (natural silence), but refill the whole ring with silence
+// anyway so no stale last-note sample survives the pause edge.
+void hdmi_audio_silence()
+{
+  if (!dvi0.timing || !dvi_running) return;
+  while (get_write_size(&dvi0.audio_ring, true)) {
+    audio_sample_t *audio_ptr = get_write_pointer(&dvi0.audio_ring);
+    audio_ptr->channels[0] = 0;
+    audio_ptr->channels[1] = 0;
+    increase_write_pointer(&dvi0.audio_ring, 1);
+  }
 }
 
 uint32_t hdmi_audio_freq() {

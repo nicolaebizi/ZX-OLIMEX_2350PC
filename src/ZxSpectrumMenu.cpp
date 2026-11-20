@@ -394,7 +394,10 @@ ZxSpectrumMenu::ZxSpectrumMenu(
   _audioI2sOp(_zx_spectrum_audio_drivers[4].name),
   _audioPwmDmaOp(_zx_spectrum_audio_drivers[3].name),
 #endif
-  _audioHdmiOp(_zx_spectrum_audio_drivers[5].name),
+  // R9: the third audio variant — the TMDS data-island route (the
+  // proven M2-AUTO path, DMA-driven, zero per-sample IRQ): the packets
+  // ride inside the video scanlines, the samples go into the dvi ring.
+  _audioHdmiOp("HDMI (monitor)"),
 
   _videoOp("Video"),
   _videoOptions(0, 0, _wizCols, 6, _menuRowsPerItem),
@@ -1544,6 +1547,16 @@ _audioOutOptions.addOption(_audioI2sOp.addQuickKey(getQuickKey(audioOutQuickKeyI
 #ifdef PICO_HDMI_AUDIO  
 _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKeyIndex++)));
   _audioHdmiOp.toggle([=]() {
+#ifdef ZX_AUDIO_PWM_DMA
+    // R9: park the PWM-DMA route when the monitor takes over (same
+    // pattern as the I2S select) — the DMA stops draining the PWM ring,
+    // the PWM channels idle at the 50% mid level, the amp stays ON.
+    pwm_dma_audio_stop();
+#endif
+    // The data island itself is ALWAYS enabled at boot (the audio-driver
+    // sweep runs before core1 launches dvi_start, so the one-time DMA
+    // list rebuild is safe there); the select only re-attaches the
+    // sample ring — see hdmi_audio_init (R9 guard).
     _zxSpectrum->setAudioDriver(&_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_hdmi_index]);
     _wiz.pop(true);
   });

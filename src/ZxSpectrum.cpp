@@ -28,6 +28,7 @@
 #include "SizingOutputStream.h"
 #include "ZxSpectrumAudioPwmDma.h" // R8: silence-on-pause ring refill
 #include "ZxSpectrumAudioI2s.h"   // R8: silence-on-pause FIFO push
+#include "ZxSpectrumAudioHdmi.h"  // R9: silence-on-pause DVI ring refill
 
 #ifndef ZX_SPECTRUM_INT_SRC 
 #define ZX_SPECTRUM_INT_SRC SyncToDisplay
@@ -186,13 +187,18 @@ void ZxSpectrum::audioPauseSilence() {
   // R8 silence-on-pause: dispatch to the active sound output.  The
   // PWM-DMA route needs a full ring refill (the cyclic DMA keeps
   // re-reading the stale ring); the I2S route needs a silence push (the
-  // PIO pull-noblock repeats the last FIFO sample).  Other drivers idle
+  // PIO pull-noblock repeats the last FIFO sample); the R9 HDMI route
+  // needs the DVI ring refilled with silence (the scanline IRQ keeps
+  // draining it even when the emulation is paused).  Other drivers idle
   // harmlessly when not fed, nothing to do there.
   if (_audio_driver == &_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_pwm_dma_index]) {
     pwm_dma_audio_silence();
   }
   else if (_audio_driver == &_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_i2s_index]) {
     i2s_audio_silence();
+  }
+  else if (_audio_driver == &_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_hdmi_index]) {
+    hdmi_audio_silence();
   }
 }
 

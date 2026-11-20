@@ -309,6 +309,18 @@ set(zxspectrum_olimex_rp2350pc_defines
   # keyed on ZX_AUDIO_PWM_DMA_DEFAULT). ----
   ZX_AUDIO_PWM_DMA=1
   ZX_AUDIO_PWM_DMA_DEFAULT
+  # ---- R9 audio: the 3rd variant — the HDMI monitor (TMDS data-island)
+  # route, the proven M2-AUTO path: the audio packets ride INSIDE the
+  # video scanlines (the per-scanline DMA IRQ on core1 encodes them, no
+  # extra per-sample IRQ) and the samples go into the dvi ring at
+  # 44.1 kHz stereo 16-bit.  The data island is enabled ONCE at boot
+  # (the audio-driver sweep runs before core1 launches dvi_start, so the
+  # DMA-list rebuild is safe); selecting the route from the menu only
+  # re-attaches the ring (hdmi_audio_init guard).  A starved ring plays
+  # digital silence (data_packet.c zero-fills), so selecting PWM/I2S
+  # mutes the monitor naturally.  Boot default stays the PWM-DMA
+  # speakers route. ----
+  PICO_HDMI_AUDIO
   # (board header sets the same audio flags: ZX_AUDIO_CODEC_ES8311=1,
   # ZX_AUDIO_ENABLED=1)
   ZX_AUDIO_ENABLED=1

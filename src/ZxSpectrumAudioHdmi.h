@@ -11,3 +11,8 @@ uint32_t hdmi_audio_freq();
 void hdmi_audio_handler(uint32_t vA, uint32_t vB, uint32_t vC, int32_t s, uint32_t buzzer, bool mute);
 
 bool hdmi_audio_ready();
+
+// R9 silence-on-pause: fill the DVI audio ring with centred silence
+// (see ZxSpectrum::audioPauseSilence — the same dispatch the PWM-DMA
+// and I2S routes already use).
+void hdmi_audio_silence();
