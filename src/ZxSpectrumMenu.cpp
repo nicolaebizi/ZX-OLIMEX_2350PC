@@ -1833,16 +1833,22 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
       // ACK (01 = HIGH, 00 = LOW, FF = neither), A = the I2C probe ACK at
       // 0x18, R = the first failed init register write (FF = none),
       // S = PIO FIFO sample pushes in the last second (~44100 = healthy),
-      // M = the I2S PIO SM running flag.  "E83C: ..." = the R5 readback of
-      // the FULL clocking + DAC verification set (8 registers) right after
-      // the init: R01/R02/R11/R12/R13/R14/R32/R17.  Expected for the
-      // BCLK-driven init: BF 18 7C 00 10 1A FF C8 - R01 bit7 = 1 is the
+      // M = the I2S PIO SM running flag.  "E83C: ..." = the R10 readback
+      // of the FULL DAC-path verification set (12 registers) right after
+      // the init: R01/R02/R06/R09/R0A/R0D/R12/R13/R32/R31/R37/R11.
+      // Expected for the BCLK-driven DAC-only init:
+      // BF 18 03 0C 0C 01 00 10 FF 00 08 7C - R01 bit7 = 1 is the
       // MANDATORY BCLK-driven sanity check (0x3F base = clocks on, 0x80 =
       // internal MCLK taken from the SCLK/BCLK pin); R02 = 0x18 (pre-div 1,
-      // x8 pre-mult); R11 = 0x7C (datasheet default, never written); R12 =
-      // 0x00 (DAC up); R13 = 0x10 (HP drive); R14 = 0x1A; R32 = 0xFF (100%
-      // volume); R17 = 0xC8.  A mismatch = the I2C write was silently
-      // dropped on the DDC-shared bus, 0xFF = read failed.  B = the R01
+      // x8 pre-mult); R06 low bits = 0x03 (SCLK div, upper bits from
+      // reset); R09/R0A = 0x0C (16-bit I2S, no TDM - R09 = the DAC's
+      // data-IN port); R0D = 0x01 (analog power); R12 = 0x00 (DAC up);
+      // R13 = 0x10 (HP drive); R32 = 0xFF (100% volume); R31 = 0x00
+      // (unmuted); R37 = 0x08 (DAC EQ bypass); R11 = 0x7C (datasheet
+      // default, never written).  R10: the ADC-side regs (R0E/R14/R17/R1C)
+      // are NOT written at all ("MOMENTAN DOAR IEȘIRE").  A mismatch = the
+      // I2C write was silently dropped on the DDC-shared bus, 0xFF = read
+      // failed.  B = the R01
       // readback bit7 sanity flag (must be 1 = the BCLK-driven mode;
       // 0 with A1/P01 = the I2C write was dropped -> DDC-bus quirk).
       // Belt-and-braces, UNGATED (visible without the diag build): if
@@ -1853,14 +1859,16 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
 #ifdef ZX_AUDIO_ES8311_ONLY
 #ifdef ZX_ESDIAG
         const ZxEsDiag *ed = zxEsDiag();
-        pen->printAtF(0, 1, false, "E83: P%02X A%u R%u S%lu M%u B%u E83C: %02X %02X %02X %02X %02X %02X %02X %02X",
+        pen->printAtF(0, 1, false, "E83: P%02X A%u R%u S%lu M%u B%u E83C: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
           (unsigned)ed->pwr, (unsigned)ed->ack, (unsigned)ed->regFail,
           (unsigned long)ed->sps, (unsigned)ed->smRun,
           (unsigned)(((ed->rb[0] & 0x80) && ed->rb[0] != 0xFF) ? 1 : 0),
           (unsigned)ed->rb[0], (unsigned)ed->rb[1],
           (unsigned)ed->rb[2], (unsigned)ed->rb[3],
           (unsigned)ed->rb[4], (unsigned)ed->rb[5],
-          (unsigned)ed->rb[6], (unsigned)ed->rb[7]);
+          (unsigned)ed->rb[6], (unsigned)ed->rb[7],
+          (unsigned)ed->rb[8], (unsigned)ed->rb[9],
+          (unsigned)ed->rb[10], (unsigned)ed->rb[11]);
 #else
         if (zxEs8311PwrProbe() == 0xFF) {
           pen->printAt(0, 1, false, "E83: PWR?");
