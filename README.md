@@ -97,7 +97,8 @@ Artifacts: `bin/vgahdmi/ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz.uf2`.
   * **CoBra 1 (Brașov)** — scheme, ROM-uri și documentație de pe cobrasov.com (ElectroNNix);
   * **TIM S Plus** — „TIM-S Plus – șapte calculatoare într-unul singur" (1990, Pănescu, Dumitru) + dump-ul EPROM-ului original;
   * **CUB-Z și HC88** — „Manual tehnic CUB-Z" (1989, ICE Felix); reconstrucția Fuse „BMC2026" pentru TIM-S Plus și CUB-Z;
-  * **Bogdan Marcu (@bmc2026)** — dischetele CUB-Z / TIM-S PLUS / HC-88 (bmc.net2000@gmail.com);
+  * **Y03GHM** — discheta CUB-Z;
+  * **Bogdan Marcu (@bmc2026)** — dischetele TIM-S PLUS / HC-88 (bmc.net2000@gmail.com);
   * **HC2000** — creditat în CLONE-ROMANESTI ca produs **ICE Felix**; autorul individual nu este nominalizat acolo — [de completat de utilizator, dacă e cunoscut].
 * **ROELOF KONING** — ROM-ul ZX48 SuperSpec (supr190712, bank 224 = superDOS) + documentația structurii FS de pe CF.
 * **Cristian Secară** — +3s (Amstrad +3 localizat).
