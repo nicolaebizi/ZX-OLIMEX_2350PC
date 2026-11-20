@@ -96,24 +96,9 @@
 #define OLIMEX_RP2350PC_DVI_LANE1_PIN  18 // D1+ / D1- on GP19
 
 // ---------------------------------------------------------------------
-// PSRAM (R13: now wired up).  APS6404L-3SQR-SN 8MB QSPI PSRAM, CS on
-// QMI_CS1n (GP8), sharing the QSPI CLK/SD0-3 with the boot flash, 10k
-// pull-up on R78.  These two defines activate the SDK's hardware_psram
-// runtime-init stage (runtime_init_setup_psram, before main()): it
-// programs flash_devinfo CS1 (gpio 8, 8MB), sends the QUAD_ENABLE to the
-// chip and installs the QMI M1 (CS1) read/write formats + conservative
-// APS6404 timing at the boot-time sys clock.  The emulator's later
-// clk_sys raise to the 251.75MHz TMDS rate is re-timed by zxPsramProbe()
-// (src/ZxPsram.cpp) BEFORE any PSRAM access.  NO variables are placed in
-// PSRAM in R13 (no BSS/heap relocation yet) - init + verify only.
+// PSRAM (later phase - never driven by the phase-1 firmware)
 // ---------------------------------------------------------------------
 #define OLIMEX_RP2350PC_PSRAM_CS_PIN 8 // QMI_CS1n, 8MB APS6404
-#ifndef PICO_PSRAM_CS_PIN
-#define PICO_PSRAM_CS_PIN 8
-#endif
-#ifndef PICO_PSRAM_SIZE_BYTES
-#define PICO_PSRAM_SIZE_BYTES (8 * 1024 * 1024)
-#endif
 
 // ---------------------------------------------------------------------
 // Flash: W25Q128JVSIQ (16 MiB)

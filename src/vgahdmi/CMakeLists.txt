@@ -195,7 +195,6 @@ pico_add_extra_outputs(ZX-MURMULATOR2_VGA_HDMI_AUTO_640x480x60Hz)
 set(zxspectrum_olimex_rp2350pc_src
   ${CMAKE_CURRENT_LIST_DIR}/../hdmi/main.cpp
   ${CMAKE_CURRENT_LIST_DIR}/../ZxEs8311.cpp # ES8311 codec bring-up (real body, phase 4 fix)
-  ${CMAKE_CURRENT_LIST_DIR}/../ZxPsram.cpp # R13: QMI CS1 PSRAM retime + boot verify (init = the SDK hardware_psram stage)
   ${zxspectrum_dvi_src}
 )
 
@@ -216,11 +215,6 @@ target_link_libraries(ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz
   # Phase-2 audio: the ES8311 codec bring-up (ZxEs8311.cpp) talks I2C0
   # (SDA=GP32/SCL=GP33) and PIO1 for the I2S master.
   hardware_i2c
-  # R13: the SDK's PSRAM support - its runtime_init_setup_psram() runs
-  # before main() (boards/olimex_rp2350pc.h defines PICO_PSRAM_CS_PIN=8 /
-  # PICO_PSRAM_SIZE_BYTES=8MB) and brings up the QMI CS1 APS6404;
-  # ZxPsram.cpp re-times M1 for the 251.75MHz sys clock + verifies.
-  hardware_psram
 )
 
 # The common sources include the PIO header stubs (pwm.pio.h, audio_i2s.pio.h,
