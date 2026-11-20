@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 fruit-bat
 //
-// R13 - PSRAM phase, step 1: INIT + VERIFY (no memory relocation).
+// R14 - PSRAM phase, step 1: INIT + VERIFY (no memory relocation).
+//
+// R14 change: the R13 runtime QMI_M1_TIMING retime is REMOVED - it ran
+// after the 251.75MHz clk_sys raise and disturbed the same QMI that the
+// XIP flash code is executing through (video never came up on the
+// auditor's board).  The SDK's boot-time (pre-main, 125MHz) PSRAM init
+// timing is kept as-is.
 //
 // Olimex RP2350-PC hardware (auditor, 2026-11):
 //   APS6404L-3SQR-SN 8MB QSPI PSRAM, CS = GP8 (QMI_CS1n), shares the QSPI
@@ -15,20 +21,10 @@
 //   QUAD_ENABLE command, and installs the QMI M1 (CS1) quad read/write
 //   formats + APS6404 timing (psram_configure_params defaults, including
 //   the RP2350-E14 workaround).  Hand-rolling the QMI direct/serial setup
-//   would only duplicate psram_initialize_internal(), so R13 keeps the
+//   would only duplicate psram_initialize_internal(), so R14 keeps the
 //   SDK stage and adds exactly two things the SDK cannot know:
 //
-//   1. RETIME: the runtime stage computes the M1 clock divisor at the
-//      boot-time sys clock (125MHz), but the emulator raises clk_sys to
-//      251.75MHz for the TMDS bit clock.  Nothing touches CS1 in between,
-//      so zxPsramProbe() (called right after ZxSpectrumVideoInit())
-//      rewrites only the QMI_M1_TIMING divisor/rxdelay/max-select/
-//      min-deselect fields with the same conservative APS6404 formula as
-//      the SDK's psram_configure_params(): divisor for <=133MHz, +1
-//      rxdelay when the divided clock is >100MHz, 8ms max-select,
-//      18ns min-deselect -> 251.75MHz/2 = 125.875MHz quad bus, rxdelay 3.
-//
-//   2. VERIFY: a 1MB address-dependent marker fill + read-back through
+//   1. VERIFY: a 1MB address-dependent marker fill + read-back through
 //      the non-cacheable CS1 alias 0x13000000 (mapped XIP window: CS1
 //      cacheable = 0x11000000, non-cacheable/non-alloc = 0x13000000;
 //      8MB -> 0x117FFFFF / 0x137FFFFF), then the 0xA5A5A5A5 / 0x5A5A5A5A
@@ -36,7 +32,7 @@
 //      aliased window (wrong devinfo size / wrong chip) makes the top
 //      write land on offset 0 and the 0xA5 read-back fails.
 //
-//   3. NO RELOCATION: no __in_psram variables here - the SDK stage sees
+//   2. NO RELOCATION: no __in_psram variables here - the SDK stage sees
 //      an empty __psram region, BSS/heap stay in the SRAM banks exactly
 //      as in R12.
 
@@ -44,8 +40,6 @@
 
 #if defined(OLIMEX_RP2350PC) && PICO_RP2350
 
-#include "hardware/clocks.h"
-#include "hardware/structs/qmi.h"
 #include "hardware/psram.h"
 #include "ZxPsram.h"
 
@@ -59,39 +53,6 @@
 
 static volatile uint8_t zx_psram_ok = 0;
 static volatile uint8_t zx_psram_mb = 0;
-
-// Same conservative APS6404 re-timing as the SDK's psram_configure_params()
-// (hardware_psram/psram.c), applied straight to the M1 timing register
-// (read-modify-write, the COOLDOWN=1 / PAGEBREAK=1024 fields installed by
-// the SDK init are preserved).
-static void __not_in_flash_func(zx_psram_retime)(void) {
-  const uint32_t clock_hz = clock_get_hz(clk_sys);
-  const uint32_t max_hz = 133u * 1000000u; // APS6404L-3SQR max
-  uint32_t divisor = (clock_hz + max_hz - 1) / max_hz;
-  if (divisor == 1 && clock_hz > 100000000u) {
-    divisor = 2; // rxdelay 2 would be too late above 100MHz
-  }
-  uint32_t rxdelay = divisor;
-  if (clock_hz / divisor > 100000000u) {
-    rxdelay += 1;
-  }
-  // max-select in units of 64 sys clocks (8ms), min-deselect in sys
-  // clocks minus ceil(divisor/2) (18ns) - 64-bit maths, femtoseconds
-  const uint64_t period_fs = 1000000000000000ull / clock_hz;
-  const uint32_t max_select =
-    (uint32_t)((8000ull * 1000000ull) / (64ull * period_fs));
-  const uint32_t min_deselect =
-    (uint32_t)((18ull * 1000000ull + period_fs - 1) / period_fs
-               - (divisor + 1) / 2);
-  qmi_hw->m[1].timing =
-    (qmi_hw->m[1].timing
-     & ~(QMI_M1_TIMING_CLKDIV_BITS | QMI_M1_TIMING_RXDELAY_BITS
-         | QMI_M1_TIMING_MAX_SELECT_BITS | QMI_M1_TIMING_MIN_DESELECT_BITS))
-    | (divisor << QMI_M1_TIMING_CLKDIV_LSB)
-    | (rxdelay << QMI_M1_TIMING_RXDELAY_LSB)
-    | (max_select << QMI_M1_TIMING_MAX_SELECT_LSB)
-    | (min_deselect << QMI_M1_TIMING_MIN_DESELECT_LSB);
-}
 
 // First 1MB quick fill/read with an address-dependent 0xA5/0x5A marker:
 // word i = 0xA5A5____ where ____ = 0x5A5A ^ (i & 0xFFFF).
@@ -118,10 +79,15 @@ void __not_in_flash_func(zxPsramProbe)(void) {
     return;
   }
 
-  // 1: retime for the 251.75MHz sys clock before any mapped access.
-  zx_psram_retime();
+  // NO RETIME (R14): the runtime stage computed the M1 timing at the
+  // boot-time sys clock (125MHz) and the emulator raises clk_sys to
+  // 251.75MHz for the TMDS bit clock.  Rewriting QMI_M1_TIMING at runtime
+  // disturbs the QMI that is also executing this XIP flash code and
+  // killed the video (R13 "no monitor"), so the SDK's conservative
+  // boot-time timing is kept as-is; a careful retime, if the PSRAM turns
+  // out marginal, is separate future work.
 
-  // 2: verify through the non-cacheable CS1 alias.
+  // 1: verify through the non-cacheable CS1 alias.
   volatile uint32_t *p = (volatile uint32_t *)ZXPSRAM_NOCACHE_BASE;
   if (!zx_psram_verify_1m(p)) {
     return;
@@ -141,7 +107,7 @@ void __not_in_flash_func(zxPsramProbe)(void) {
     return;
   }
 
-  // 3: reported size (devinfo CS1) and the pass flag for the menu row.
+  // 2: reported size (devinfo CS1) and the pass flag for the menu row.
   zx_psram_mb = (uint8_t)(psram_get_size() >> 20); // 8
   zx_psram_ok = 1;
 }

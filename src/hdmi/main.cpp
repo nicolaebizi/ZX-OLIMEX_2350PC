@@ -57,7 +57,7 @@ extern "C" {
 #include "ZxSpectrumAudioDriver.h"
 #include "ZxSpectrumVideoDriver.h"
 #ifdef OLIMEX_RP2350PC
-#include "ZxPsram.h" // R13: QMI CS1 PSRAM retime + boot verify
+#include "ZxPsram.h" // R14: QMI CS1 PSRAM boot verify (init = the SDK stage)
 #endif
 
 #define UART_ID uart0
