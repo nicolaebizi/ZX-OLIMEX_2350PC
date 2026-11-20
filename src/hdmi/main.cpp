@@ -278,11 +278,16 @@ void core1_main() {
 #define CPU_STEP_LOOP 100
 
 void __not_in_flash_func(main_loop)() {
-  
+
   unsigned int lastInterruptFrame = _frames;
-  
+
   uint frames = 0;
-  
+
+  // R8 silence-on-pause: track the menu state so the menu-ENTER edge
+  // gets an instant silence flush (the stuck AY note dies immediately,
+  // not one frame later).
+  bool wasMenu = showMenu;
+
   while (1) {
     tuh_task();
 #ifdef USE_PS2_KBD
@@ -297,6 +302,7 @@ void __not_in_flash_func(main_loop)() {
     process_joystick();
 
     if (!showMenu) {
+      wasMenu = false;
       for (int i = 0; i < CPU_STEP_LOOP; ++i) {
         if (lastInterruptFrame != _frames) {
           lastInterruptFrame = _frames;
@@ -306,10 +312,25 @@ void __not_in_flash_func(main_loop)() {
       }
     }
     else {
+      // R8: the emulation is NOT stepping here (menu shown / snapshot
+      // transition) - no per-sample audio pushes reach the sound
+      // output.  The PWM-DMA cyclic reader re-reads the stale ring
+      // (the LAST AY note plays forever) and the I2S PIO pull-noblock
+      // repeats the last FIFO sample.  Flush the centred silence:
+      //   - instantly on the menu-enter edge (exiting a game to the
+      //     menu kills the stuck note the same instant), and
+      //   - every rendered menu frame (60 Hz, trivial cost), which
+      //     also covers any other not-stepping window (snapshot load
+      //     transitions) while the menu is up.
+      if (!wasMenu) {
+        wasMenu = true;
+        zxSpectrum.audioPauseSilence();
+      }
       picoWinHidKeyboard.processKeyRepeat();
       if (frames != _frames) {
         frames = _frames;
         picoDisplay.refresh();
+        zxSpectrum.audioPauseSilence();
       }
     }
   }

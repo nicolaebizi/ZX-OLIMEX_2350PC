@@ -26,6 +26,10 @@ bool __not_in_flash_func(i2s_audio_ready)()
   return null_audio_ready();
 }
 
+void i2s_audio_silence()
+{
+}
+
 #else
 
 #ifdef ZX_AUDIO_I2S_LRCK_FIRST
@@ -178,6 +182,17 @@ void __not_in_flash_func(i2s_audio_handler)(uint32_t vA, uint32_t vB, uint32_t v
 bool __not_in_flash_func(i2s_audio_ready)()
 {
   return audio_ready();
+}
+
+void i2s_audio_silence()
+{
+  // R8 silence-on-pause: push one centred-silence stereo frame (signed
+  // 16-bit mid level = 0x0000/0x0000, exactly what the mute path of
+  // audio_handler_16bit_helper produces).  After the FIFO drains the
+  // PIO pull-noblock repeats this silence forever instead of the last
+  // played AY sample; re-pushed every menu frame, it also outlives any
+  // stale in-FIFO sample from the moment the emulation stopped.
+  if (audio_ready()) is2_audio_put(0);
 }
 
 #endif

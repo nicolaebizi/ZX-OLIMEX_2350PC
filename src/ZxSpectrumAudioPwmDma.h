@@ -40,3 +40,14 @@ bool pwm_dma_audio_ready();
 // I2S/ES8311): abort the DMA transfer and leave both PWM channels at the
 // silent 50% mid level.  The amp stays ON (shared net).
 void pwm_dma_audio_stop();
+
+// R8 silence-on-pause: the emulation is not stepping (menu shown /
+// snapshot transition), so no per-sample pushes reach the ring - the
+// cyclic DMA keeps re-reading the stale ring and the LAST AY note plays
+// forever.  Refill every ring slot with the centred 50%-duty silence
+// word (same mid level as the init pre-fill) and re-sync the software
+// head to the DMA tail, so the stuck tone dies within one ring pass
+// (1024 samples = ~23 ms at 44.1 kHz) and the ring state stays
+// consistent for the resumed emulation.  Cheap enough to call every
+// menu frame at 60 Hz.
+void pwm_dma_audio_silence();

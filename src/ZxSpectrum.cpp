@@ -26,6 +26,8 @@
 #include <pico/printf.h>
 #include <pico/stdlib.h>
 #include "SizingOutputStream.h"
+#include "ZxSpectrumAudioPwmDma.h" // R8: silence-on-pause ring refill
+#include "ZxSpectrumAudioI2s.h"   // R8: silence-on-pause FIFO push
 
 #ifndef ZX_SPECTRUM_INT_SRC 
 #define ZX_SPECTRUM_INT_SRC SyncToDisplay
@@ -178,6 +180,20 @@ void ZxSpectrum::setAudioDriver(zx_spectrum_audio_driver_t* audio_driver) {
   u32pas = ((1000000 << 5) / hz);
   // Time for a single audio in sample in 32nds of a micro second
   u32pes = ((1000000 << 5) / 1000000);
+}
+
+void ZxSpectrum::audioPauseSilence() {
+  // R8 silence-on-pause: dispatch to the active sound output.  The
+  // PWM-DMA route needs a full ring refill (the cyclic DMA keeps
+  // re-reading the stale ring); the I2S route needs a silence push (the
+  // PIO pull-noblock repeats the last FIFO sample).  Other drivers idle
+  // harmlessly when not fed, nothing to do there.
+  if (_audio_driver == &_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_pwm_dma_index]) {
+    pwm_dma_audio_silence();
+  }
+  else if (_audio_driver == &_zx_spectrum_audio_drivers[zx_spectrum_audio_driver_i2s_index]) {
+    i2s_audio_silence();
+  }
 }
 
 void ZxSpectrum::transmute(ZxSpectrumType type) {

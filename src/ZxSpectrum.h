@@ -1446,6 +1446,14 @@ public:
   void toggleMute() { _mute = !_mute; }
   bool mute() { return _mute; }
 
+  // R8 silence-on-pause: the emulation is not stepping (menu shown /
+  // snapshot transition), so no per-sample audio pushes happen.  Keep
+  // the active sound output silent: the PWM-DMA cyclic reader re-reads
+  // the stale ring (a stuck AY note) and the I2S PIO pull-noblock
+  // repeats the last pushed sample - refill/push the centred silence.
+  // A no-op for every other driver (they idle harmlessly when not fed).
+  void audioPauseSilence();
+
   inline uint8_t borderColour() { return _borderColour; }
   inline uint8_t borderColour(uint32_t y) { return _borderBuf[y]; }
 

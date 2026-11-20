@@ -29,6 +29,10 @@ void pwm_dma_audio_stop()
 {
 }
 
+void pwm_dma_audio_silence()
+{
+}
+
 #else
 
 #include "hardware/gpio.h"
@@ -213,6 +217,23 @@ void pwm_dma_audio_stop()
   const int32_t half = (int32_t)((s_pwm_dma_top + 1) / 2);
   pwm_set_chan_level(s_pwm_dma_slice, PWM_CHAN_A, half);
   pwm_set_chan_level(s_pwm_dma_slice, PWM_CHAN_B, half);
+}
+
+void pwm_dma_audio_silence()
+{
+  if (s_pwm_dma_channel < 0) return;
+  // R8 silence-on-pause: overwrite EVERY ring slot with the same centred
+  // silence word as the init pre-fill (50% duty on both channels), then
+  // re-sync the software head to the DMA tail: the cyclic reader now
+  // re-reads only silence, so a note stuck since the emulation stopped
+  // (menu / snapshot transition) dies within one ring pass, and
+  // pwm_dma_audio_ready() sees an empty ring for the resumed emulation.
+  const int32_t half = (int32_t)((s_pwm_dma_top + 1) / 2);
+  const uint32_t silence = (uint32_t)half | ((uint32_t)half << 16);
+  for (uint i = 0; i < ZX_PWM_DMA_RING_SAMPLES; ++i) s_pwm_dma_ring[i] = silence;
+  const uint32_t tail =
+    (dma_channel_hw_addr(s_pwm_dma_channel)->read_addr - (uintptr_t)s_pwm_dma_ring) >> 2;
+  s_pwm_dma_head = tail & ZX_PWM_DMA_RING_MASK;
 }
 
 #endif
