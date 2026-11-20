@@ -57,3 +57,32 @@ IRQ-uri audio. RP2350B are mapping de pini diferit: GPOUT1/GP23 ucide video DVI.
 
 - ES8311 analog: cauză pop neidentificată (necesită osciloscop)
 - Hardware testing long-run: doar confirmarea inițială de sunet/video de la utilizator
+
+## Rundele R8–R11 (continuare, ES8311 HP out)
+
+| Rundă | Ce s-a testat | Rezultat |
+|---|---|---|
+| R8 (`f5197aa`) | ring I2S umplut cu silență la pauză/meniu | fix nota infinită |
+| R9 (`184edd2`) | a 3-a variantă audio: HDMI monitor (TMDS data-island) | P01/A1 + registre = exact (starea sănătoasă de referință) |
+| R10 (`0a50370`) | init ES8311 doar DAC + restructure diag/menu | **hardware: PFF + A0 + E83C = tot FF + „Audio out [125]" corupt** |
+| R11 (acest commit) | `git revert 0a50370` + ONLY scoase cele 4 scrieri ADC (R0E/R14/R17/R1C); probe/I2C/SDPIN/menu = cod R9 neatins | build OK, în așteptarea testului hardware |
+
+### Analiza bug-urilor R10 (din `git show 0a50370`, dif față de R9)
+
+- **(a) Probe/I2C „mort":** dif R10 NU modifică nimic din calea probe: `i2c_init`,
+  `gpio_set_function`/pull-up GP32/33, bucla de polaritate GP22 și `es_read(R00)`
+  sunt octet-cu-octet identice cu R9; scrierile eliminate sunt TOATE după probe, iar
+  readback-ul extins rulează după init. Deci PFF/A0/FF NU poate proveni din dif —
+  e exact starea implicită de reset a `zxEsDiagState` (pwr=FF, ack=0, rb=FF×12),
+  adică o sesiune în care probe-ul nu a primit ACK niciodată (stare de
+  alimentare/bus la momentul testului), nu o schimbare sursă. Verificat și binar:
+  elf-ul flash-uit R10diag conține string-ul E83C cu 12 sloturi → nu era binar vechi.
+- **(b) „Audio out [125]":** R10 nu renumerotează niciun index de driver și nu
+  atinge sanitise-ul (`ZxSpectrumAudioDriver.cpp`, `ZxSpectrumAudioDriverEnum.h`,
+  `ZxSpectrumSettings.cpp` = neatinse din R7/R8; clamp-ul din `sanitise()` e
+  intact). Rândul citește `getAudioDriver()->name` — un pointer la nume corupt +
+  linia diag în starea implicită de reset = semnătura unui firmware
+  parțial-initializat/repornit la momentul pozei, nu un bug de index/sanitise.
+- **Lecție de proces:** cea mai mică dif posibilă pe baza R9 sănătoase (doar
+  eliminarea celor 4 scrieri ADC) izolează variabila testată; restructurările
+  mari de comentarii/diag în același commit fac cauza imposibil de atribuit.

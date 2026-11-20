@@ -7,11 +7,15 @@
 // esp-bsp es8311.c verbatim (saved unmodified in
 // docs/audio/es8311_esp-bsp_reference.c, fetched 2026-11-19 from
 // https://raw.githubusercontent.com/espressif/esp-bsp/master/components/es8311/es8311.c).
-// Order: reset -> clock tree -> serial port -> analog power (0x0D/0x0E) ->
-// DAC power + HP drive (0x12/0x13) -> mic defaults (0x14/0x17, from the
-// vendor's es8311_microphone_config, written explicitly so the E83C
-// readback diag compares against known-written values) -> EQ bypasses
-// (0x1C/0x37) -> volume/unmute (0x32/0x31).
+// R11 (DAC-only writes, minimal diff on the R9 base): the four ADC-path
+// register writes (R0E/R14/R17/R1C - see the init body) are DROPPED; the
+// probe, I2C init, clock tree, serial port and DAC chain are EXACTLY the
+// R9 code.  Diag readback = the R10 12-register DAC-verification set.
+//
+// Order: reset -> clock tree -> serial port -> analog power (0x0D) ->
+// DAC power + HP drive (0x12/0x13) -> DAC EQ bypass (0x37) ->
+// volume/unmute (0x32/0x31).  The input/ADC side (R0E/R14/R17/R1C) stays
+// at its reset state ("MOMENTAN DOAR IEȘIRE").
 //
 // Clocking decision (documented for the hardware bring-up):
 //   The codec is an I2S SLAVE.  Our PIO master emits BCLK = 32 x fs
@@ -203,17 +207,17 @@ bool zxEs8311Init() {
   es_write(ES8311_SDPIN_REG09, 0x0C);  // in: I2S format, 16-bit (bits[3:2]=11)
   es_write(ES8311_SDPOUT_REG0A, 0x0C); // out: I2S format, 16-bit
 
-  // ---- Analog power: DAC path on (playback phase), per esp-bsp verbatim ----
+  // ---- Analog power: DAC/HP path ONLY (R11) ----
+  // R11 (minimal diff on R9, user constraint "MOMENTAN DOAR IEȘIRE"): the
+  // four ADC-path register writes are REMOVED - R0E = 0x02 (ADC PGA +
+  // ADC modulator power), R14 = 0x1A (analog MIC select + max PGA gain,
+  // from the vendor's es8311_microphone_config), R17 = 0xC8 (ADC gain)
+  // and R1C = 0x6A (ADC EQ/DC-cancel).  Everything else (probe, I2C init,
+  // clock tree, serial port, DAC chain, volume/unmute) is EXACTLY the
+  // R9 code - the R10 restructure is reverted wholesale.
   es_write(ES8311_SYSTEM_REG0D, 0x01); // power up analog circuitry - NOT default
-  es_write(ES8311_SYSTEM_REG0E, 0x02); // enable analog PGA, enable ADC modulator (esp-bsp value)
   es_write(ES8311_SYSTEM_REG12, 0x00); // power-up DAC - NOT default
   es_write(ES8311_SYSTEM_REG13, 0x10); // enable output to HP drive - NOT default
-  // Mic-path defaults from the vendor's es8311_microphone_config(), written
-  // unconditionally like esp-bsp board bring-up does, so the E83C readback
-  // diag (R14/R17) always compares against known-written values.
-  es_write(ES8311_SYSTEM_REG14, 0x1A); // enable analog MIC, max PGA gain
-  es_write(ES8311_ADC_REG17, 0xC8);    // ADC gain (vendor value)
-  es_write(ES8311_ADC_REG1C, 0x6A);    // ADC EQ bypass, digital DC cancel
   es_write(ES8311_DAC_REG37, 0x08);    // bypass DAC equalizer - NOT default
 
   // ---- Volume (modest default) + DAC unmute ----
@@ -226,34 +230,45 @@ bool zxEs8311Init() {
   es_write(ES8311_DAC_REG31, r31 & ~0x60); // clear the two DAC mute bits
 
 #ifdef ZX_ESDIAG
-  // E83 diag (f): readback of the FULL clocking + DAC verification set
-  // (8 registers), via the proven repeated-START es_read.  Row order:
-  // R01/R02/R11/R12/R13 + R14/R32/R17.  Expected values for our BCLK-driven
-  // init (computed from the init code above):
+  // E83 diag (f): readback of the FULL DAC-path verification set (R11:
+  // 12 registers, clocking + SDPIN + DAC/HP chain), via the proven
+  // repeated-START es_read.  Row order + expected values for our
+  // BCLK-driven DAC-only init (computed from the init code above):
   //   R01 = 0xBF (0x3F|0x80: all codec clocks on, bit7 = 1 -> the internal
   //          MCLK is taken from the SCLK/BCLK pin - the BCLK-driven mode
   //          MANDATORY sanity check; bit7 = 0/absent here means the write
   //          was dropped or the chip fell back to another clock source)
   //   R02 = 0x18 (pre-div 1, x8 pre-multiplier; read-modify-write keeps the
   //          reset low bits, assumed 0)
-  //   R11 = 0x7C (datasheet default of this never-written register - a
-  //          wrong value means the read path or chip state is off)
+  //   R06 = 0x03 (SCLK divider field = bclk_div-1 = 3, no SCLK inversion;
+  //          upper bits kept from the reset state)
+  //   R09 = 0x0C (SDPIN: I2S format, 16-bit, no TDM - the DAC's serial
+  //          data INPUT port; a wrong value here = the samples never
+  //          reach the DAC even with perfect clocking)
+  //   R0A = 0x0C (SDPOUT: I2S format, 16-bit; port FORMAT only - the ADC
+  //          itself stays unconfigured per the R11 constraint)
+  //   R0D = 0x01 (analog circuitry powered)
   //   R12 = 0x00 (DAC powered up)
   //   R13 = 0x10 (HP drive enabled)
-  //   R14 = 0x1A (mic path defaults)
   //   R32 = 0xFF (DAC volume 100%)
-  //   R17 = 0xC8 (ADC gain, vendor value)
+  //   R31 = 0x00 (both DAC mute bits cleared; RMW from the reset value)
+  //   R37 = 0x08 (DAC EQ bypassed)
+  //   R11 = 0x7C (datasheet default of this never-written register - a
+  //          wrong value means the read path or chip state is off)
   // A readback != the value written means the I2C write was silently
   // dropped (DDC-shared bus quirk); a readback of 0xFF itself means the
   // read transaction failed.
   {
-    static const uint8_t rbRegs[8] = {
+    static const uint8_t rbRegs[12] = {
       ES8311_CLKM1_REG01, ES8311_CLKM2_REG02,
-      ES8311_SYSTEM_REG11, ES8311_SYSTEM_REG12,
-      ES8311_SYSTEM_REG13, ES8311_SYSTEM_REG14,
-      ES8311_DAC_REG32, ES8311_ADC_REG17
+      ES8311_CLKM6_REG06,
+      ES8311_SDPIN_REG09, ES8311_SDPOUT_REG0A,
+      ES8311_SYSTEM_REG0D, ES8311_SYSTEM_REG12,
+      ES8311_SYSTEM_REG13,
+      ES8311_DAC_REG32, ES8311_DAC_REG31, ES8311_DAC_REG37,
+      ES8311_SYSTEM_REG11
     };
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 12; ++i) {
       uint8_t v = 0;
       if (!es_read(rbRegs[i], &v)) v = 0xFF;
       zxEsDiagRb((uint8_t)i, v);
@@ -261,7 +276,7 @@ bool zxEs8311Init() {
   }
 #endif
 
-  printf("ES8311: playback path up: 44100Hz 16-bit I2S slave, BCLK-driven, HP out\n");
+  printf("ES8311: DAC-only path up: 44100Hz 16-bit I2S slave, BCLK-driven, HP out (ADC untouched)\n");
   return true;
 }
 
