@@ -3,6 +3,9 @@
 #include <algorithm>
 #include "pico/bootrom.h"
 #include "ZxSpectrumMenu.h"
+#ifdef OLIMEX_RP2350PC
+#include "ZxPsram.h" // R13: ungated "PSRAM: 8MB OK"/"FAIL" menu row
+#endif
 #include "ZxSpectrum.h"
 #include "PicoPen.h"
 #include "FatFsSpiDirReader.h"
@@ -1872,6 +1875,23 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
         builtForRow(pen);
 #endif
       }
+
+#ifdef OLIMEX_RP2350PC
+     // R13: the UNGATED PSRAM status row (Olimex RP2350-PC only; this is
+     // user-facing boot status, NOT a debug gate - no ZX_ESDIAG etc.).
+     // Row 4 is free on this target: rows 2-3 are the always-on _devices
+     // child (Clk/Vcore + USB lines) and _wiz starts at row 6.  Shows the
+     // boot-time verify result of the 8MB APS6404 on QMI CS1 (GP8):
+     // "PSRAM: 8MB OK" or "PSRAM: FAIL" (no crash is possible - with the
+     // explicit devinfo size the window is always mapped; a failed verify
+     // just reads garbage).
+     if (zxPsramOk()) {
+       pen->printAtF(0, 4, false, "PSRAM: %uMB OK", (unsigned)zxPsramSizeMb());
+     }
+     else {
+       pen->printAt(0, 4, false, "PSRAM: FAIL");
+     }
+#endif
 
      // Persistent ROM-load stage (rfix4): printed in the row-1 area, right
      // of the "Built for ..." report, so the last loader step stays

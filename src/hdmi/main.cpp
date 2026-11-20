@@ -56,6 +56,9 @@ extern "C" {
 #include "ZxSpectrumFileSettings.h"
 #include "ZxSpectrumAudioDriver.h"
 #include "ZxSpectrumVideoDriver.h"
+#ifdef OLIMEX_RP2350PC
+#include "ZxPsram.h" // R13: QMI CS1 PSRAM retime + boot verify
+#endif
 
 #define UART_ID uart0
 #define BAUD_RATE 115200
@@ -353,6 +356,17 @@ int main() {
 
   // Not that the following sets the system clock
   ZxSpectrumVideoInit();
+
+#ifdef OLIMEX_RP2350PC
+  // R13 - PSRAM phase step 1 (INIT + VERIFY, no relocation): the SDK
+  // hardware_psram runtime stage already brought the CS1 APS6404 (GP8)
+  // up during runtime init at the boot clock; now that
+  // ZxSpectrumVideoInit() raised clk_sys to the 251.75MHz TMDS rate,
+  // re-time QMI M1 and run the 1MB marker + 0xA5/0x5A wrap verify.  The
+  // result is shown UNGATED in the menu (row 4, "PSRAM: 8MB OK"/"FAIL").
+  // Before core1 launches -> no concurrent CS1 traffic.
+  zxPsramProbe();
+#endif
 
   setup_default_uart();
 
