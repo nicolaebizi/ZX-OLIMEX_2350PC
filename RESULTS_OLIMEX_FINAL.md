@@ -1,7 +1,10 @@
-# RESULTS — Olimex RP2350PC bring-up (FINAL, faza 1 → R7)
+# RESULTS — Olimex RP2350PC bring-up (FINAL, faza 1 → R11)
 
-**Commit de lucru:** `ef8778b` — R7: audio PWM-DMA direct în amp (fără codec) — difuzoarele = ruta sigură
-**Data:** 2026-11-19
+**Commituri-cheie:**
+- `ef8778b` — R7: sunetul PWM-DMA (primul AUDIO funcțional)
+- `184edd2` — R9: a 3-a variantă audio (HDMI monitor TMDS data-island)
+- `048e3d6` — R11: **STAREA FINALĂ**
+**Data:** 2026-11-20
 **Hardware:** Olimex RP2350PC (RP2350B, 80-pin, DVI + USB + microSD + ES8311 codec + PAM8003 amp)
 
 ---
@@ -35,17 +38,22 @@ variabilă pe rundă, fiecare cu build dedicat (`_build_olimexR*`) + hosttest.
 | R6 (`6b0a2d1`) | amp PAM8003 pornit (SHDN# GP35 LOW) | ruta difuzoarelor pregătită |
 | R7 (`ef8778b`) | audio PWM-DMA direct în amp — GP26/27, DREQ_PWM_WRAP5, ring DMA, ZERO IRQ-uri audio | **SUNET CONFIRMAT de utilizator** ✅ |
 
-## Starea finală (la `ef8778b`)
+## Starea finală (la `048e3d6`, R11 — DECIZIA UTILIZATORULUI, 2026-11-20)
 
-- ✅ **HDMI/DVI** — video stabil pe Olimex RP2350PC
-- ✅ **USB** — funcțional
+**FUNCȚIONAL:**
+- ✅ **HDMI video** — stabil pe 11 mașini testate
+- ✅ **USB** — hub + tastatură funcționale
 - ✅ **microSD** — funcțional
-- ✅ **SUNET** — PWM-DMA direct în amplificator (difuzoare), confirmat de utilizator
-- 🔒 **ES8311 codec = mister PARCAT** — partea digitală = perfectă (init + readback
-  OK din esp-bsp), partea analogică = doar pop. Rămâne de investigat cu **osciloscop**
-  (cine excită efectiv etajul analog). NU se reia până nu există scope.
-- 🔮 **GP28 = line-in** — viitor
-- 🔮 **PSRAM** — viitor
+- ✅ **CF SuperSpec** — funcțional
+- ✅ **AUDIO — PWM-DMA** — difuzoarele ✓ (confirmat de utilizator)
+- ✅ **AUDIO — HDMI monitor** ✓ (TMDS data-island, R9)
+
+**PARCAT: ES8311 codec (decizia utilizatorului):**
+- misterul: digital = perfect (P01/A1/B1 + registre exacte ca la starea sănătoasă R5),
+  dar analog = doar pop
+- starea hardware s-a schimbat **între sesiuni** (R5 vs R10 cu cod identic → PFF/A0)
+- depanare viitoare cu **multimetru/osciloscop** în sesiune dedicată
+- suspect: starea fizică / alimentare-LDO / cabluri-DDC — NU un bug de cod
 
 ## Lecția-cheie (în RETRO_KNOWLEDGE/LESSONS.md)
 
@@ -65,7 +73,7 @@ IRQ-uri audio. RP2350B are mapping de pini diferit: GPOUT1/GP23 ucide video DVI.
 | R8 (`f5197aa`) | ring I2S umplut cu silență la pauză/meniu | fix nota infinită |
 | R9 (`184edd2`) | a 3-a variantă audio: HDMI monitor (TMDS data-island) | P01/A1 + registre = exact (starea sănătoasă de referință) |
 | R10 (`0a50370`) | init ES8311 doar DAC + restructure diag/menu | **hardware: PFF + A0 + E83C = tot FF + „Audio out [125]" corupt** |
-| R11 (acest commit) | `git revert 0a50370` + ONLY scoase cele 4 scrieri ADC (R0E/R14/R17/R1C); probe/I2C/SDPIN/menu = cod R9 neatins | build OK, în așteptarea testului hardware |
+| R11 (`048e3d6`) | `git revert 0a50370` + ONLY scoase cele 4 scrieri ADC (R0E/R14/R17/R1C); probe/I2C/SDPIN/menu = cod R9 neatins | build OK; test hardware: **digital perfect (P01/A1/B1 + registre exacte ca la R5), analog = doar pop → ES8311 PARCAT** (decizia utilizatorului) |
 
 ### Analiza bug-urilor R10 (din `git show 0a50370`, dif față de R9)
 
