@@ -92,6 +92,6 @@ Artifacts: `bin/vgahdmi/ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz.uf2`.
 
 * **fruit-bat** — proiectul de bază pico-zxspectrum.
 * **Paul Robson** — rp2350-modules, referința pentru PSRAM/codec.
-* **Roelof Koning** — SuperSpec (CF card).
+* **ROELOF KONING** — ROM-ul ZX48 SuperSpec (supr190712, bank 224 = superDOS) + documentația structurii FS de pe CF.
 * **Cristian Secară** — +3s (Amstrad +3 localizat).
-* **utilizatorul** — proiectul + validarea hardware.
+* **Utilizatorul** — validarea pe hardware (VGA M1/M2/M2-AUTO + TFT M1), DESIGN-ul meniului final (D → CF-SUPERSPECS → S: CF IMAGINE) și decizia de retragere (CUB-Z pe VGA pe M2-AUTO dacă HDMI nu ține).
