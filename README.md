@@ -85,7 +85,7 @@ Artifacts: `bin/vgahdmi/ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz.uf2`.
 ├── boards/               # definiția plăcii olimex_rp2350pc
 ├── zxspectrum/           # ROM-uri, disk-uri, imagini CF (SD card layout)
 ├── firmware/             # UF2 funcțional gata de flash
-└── _build_olimexR17*/    # directoarele de build (nu se publică integral)
+       └── _build_olimexR17*/    # directoarele de build (nu se publică integral)
 ```
 
 ## CREDITE
