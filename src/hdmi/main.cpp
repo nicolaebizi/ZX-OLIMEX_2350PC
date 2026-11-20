@@ -56,6 +56,9 @@ extern "C" {
 #include "ZxSpectrumFileSettings.h"
 #include "ZxSpectrumAudioDriver.h"
 #include "ZxSpectrumVideoDriver.h"
+#ifdef OLIMEX_RP2350PC
+#include "ZxPsram.h" // R16: Robson rp2350-modules PSRAM init + verify
+#endif
 
 #define UART_ID uart0
 #define BAUD_RATE 115200
@@ -353,6 +356,18 @@ int main() {
 
   // Not that the following sets the system clock
   ZxSpectrumVideoInit();
+
+#ifdef OLIMEX_RP2350PC
+  // R16 - PSRAM phase step 1 (INIT + VERIFY, no relocation): faithful
+  // port of Paul Robson's rp2350-modules APS6404 init, run at the SAFE
+  // point of his design - runtime, right AFTER ZxSpectrumVideoInit()
+  // raised clk_sys to the 251.75MHz TMDS rate, so the QMI M1/M0 timing
+  // is computed once from the live clock (no SDK pre-main stage, no
+  // devinfo, no hardware_psram).  ID probe -> flash M0 retime + forced
+  // XIP read -> QPI enable -> M1 setup -> 1MB marker + wrap verify.  The
+  // result is shown UNGATED in the menu (row 4, "PSRAM: 8MB OK"/"FAIL").
+  zxPsramProbe();
+#endif
 
   setup_default_uart();
 

@@ -195,6 +195,7 @@ pico_add_extra_outputs(ZX-MURMULATOR2_VGA_HDMI_AUTO_640x480x60Hz)
 set(zxspectrum_olimex_rp2350pc_src
   ${CMAKE_CURRENT_LIST_DIR}/../hdmi/main.cpp
   ${CMAKE_CURRENT_LIST_DIR}/../ZxEs8311.cpp # ES8311 codec bring-up (real body, phase 4 fix)
+  ${CMAKE_CURRENT_LIST_DIR}/../ZxPsram.cpp # R16: PSRAM init ported from Robson's rp2350-modules (runtime init at the final clk_sys, no SDK stage)
   ${zxspectrum_dvi_src}
 )
 
