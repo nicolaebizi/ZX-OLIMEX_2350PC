@@ -10,7 +10,7 @@ Un firmware ZX Spectrum care rulează pe placa OLIMEX RP2350PC (RP2350B, 16MB fl
 | - | ------ |
 | 1 | ZX Spectrum 48K |
 | 2 | ZX Spectrum 128K |
-| 3 | ZX Spectrum Turbo |
+| 3 | TURBO SPECTRUM |
 | 4 | HC2000 |
 | 5 | CoBra 1 |
 | 6 | ZX+3 (Amstrad +3, ROM-uri incluse) |
@@ -92,6 +92,13 @@ Artifacts: `bin/vgahdmi/ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz.uf2`.
 
 * **fruit-bat** — proiectul de bază pico-zxspectrum.
 * **Paul Robson** — rp2350-modules, referința pentru PSRAM/codec.
+* **Autorii clonelor românești** (creditați în [CLONE-ROMANESTI](https://github.com/nicolaebizi/CLONE-ROMANESTI), README + release-urile v0.5–v0.11):
+  * **Sorin Cismas** (WWW.COBRASOV.ORG) — TURBO SPECTRUM (ROM turbo, porturi F5/CE/SM);
+  * **CoBra 1 (Brașov)** — scheme, ROM-uri și documentație de pe cobrasov.com (ElectroNNix);
+  * **TIM S Plus** — „TIM-S Plus – șapte calculatoare într-unul singur" (1990, Pănescu, Dumitru) + dump-ul EPROM-ului original;
+  * **CUB-Z și HC88** — „Manual tehnic CUB-Z" (1989, ICE Felix); reconstrucția Fuse „BMC2026" pentru TIM-S Plus și CUB-Z;
+  * **Bogdan Marcu (@bmc2026)** — dischetele CUB-Z / TIM-S PLUS / HC-88 (bmc.net2000@gmail.com);
+  * **HC2000** — creditat în CLONE-ROMANESTI ca produs **ICE Felix**; autorul individual nu este nominalizat acolo — [de completat de utilizator, dacă e cunoscut].
 * **ROELOF KONING** — ROM-ul ZX48 SuperSpec (supr190712, bank 224 = superDOS) + documentația structurii FS de pe CF.
 * **Cristian Secară** — +3s (Amstrad +3 localizat).
 * **Utilizatorul** — validarea pe hardware (VGA M1/M2/M2-AUTO + TFT M1), DESIGN-ul meniului final (D → CF-SUPERSPECS → S: CF IMAGINE) și decizia de retragere (CUB-Z pe VGA pe M2-AUTO dacă HDMI nu ține).
