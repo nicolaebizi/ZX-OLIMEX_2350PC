@@ -99,7 +99,7 @@ Artifacts: `bin/vgahdmi/ZX-OLIMEX_RP2350PC_HDMI_640x480x60Hz.uf2`.
   * **CUB-Z și HC88** — „Manual tehnic CUB-Z" (1989, ICE Felix); reconstrucția Fuse „BMC2026" pentru TIM-S Plus și CUB-Z;
   * **Y03GHM** — discheta CUB-Z;
   * **Bogdan Marcu (@bmc2026)** — dischetele TIM-S PLUS / HC-88 (bmc.net2000@gmail.com);
-  * **HC2000** — creditat în CLONE-ROMANESTI ca produs **ICE Felix**; autorul individual nu este nominalizat acolo — [de completat de utilizator, dacă e cunoscut].
+  * **HC2000** — creditat în CLONE-ROMANESTI ca produs **ICE Felix**;
 * **ROELOF KONING** — ROM-ul ZX48 SuperSpec (supr190712, bank 224 = superDOS) + documentația structurii FS de pe CF.
 * **Cristian Secară** — +3s (Amstrad +3 localizat).
 * **Utilizatorul** — validarea pe hardware (VGA M1/M2/M2-AUTO + TFT M1), DESIGN-ul meniului final (D → CF-SUPERSPECS → S: CF IMAGINE) și decizia de retragere (CUB-Z pe VGA pe M2-AUTO dacă HDMI nu ține).
