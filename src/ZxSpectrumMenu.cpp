@@ -25,7 +25,6 @@
 #include "CobraDiskFile.h"
 
 #include "ZxCzDiag.h"
-#include "ZxEs8311.h" // E83 belt-and-braces note (zxEs8311Present/PwrProbe)
 #ifdef ZX_ESDIAG
 #include "ZxEsDiag.h" // E83 diag row (ZX_ESDIAG, default OFF)
 #endif
@@ -1249,14 +1248,15 @@ ZxSpectrumMenu::ZxSpectrumMenu(
   // 2026): the D disk menu (the menu opened by quick key D, which already
   // holds the HC2K/+3/TIMS PLUS/CUBZ/HC88 machine-disk entries) no longer
   // holds the CF row directly - it opens the "CF-SUPERSPECS" submenu
-  // instead (D -> CF-SUPERSPECS). Inside the submenu the "S: CF IMAGINE"
-  // row (quick key S - free in this one-row context, the D menu's own
-  // 1-9/A-D keys are all taken) opens the same chooser as before, pointed
+  // instead (D -> CF-SUPERSPECS).  Quick key E (the D menu's own keys are
+  // 1,2,3,4,6,7,8,9,A,B,C,D - E is free).  Inside the submenu the "S: CF
+  // IMAGINE" row (quick key S - free in this one-row context) opens the
+  // same chooser as before, pointed
   // at zxspectrum/cf. The row label shows the basename of the currently
   // mounted CF image; picking a *.CF image mounts it
   // (ZxSpectrumCf::setImageFile closes the open file + drops the
   // uniform-write table, so the next CF access opens the fresh dump).
-  _hcDisk.addOption(&_ssCfMenuOp);
+  _hcDisk.addOption(_ssCfMenuOp.addQuickKey(&_kE));
   _ssCfMenuOp.toggle([=]() {
     _wiz.push(
       &_ssCfMenu,
@@ -1851,10 +1851,6 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
       // failed.  B = the R01
       // readback bit7 sanity flag (must be 1 = the BCLK-driven mode;
       // 0 with A1/P01 = the I2C write was dropped -> DDC-bus quirk).
-      // Belt-and-braces, UNGATED (visible without the diag build): if
-      // neither GP22 polarity ACKed the note "E83: PWR?" shows instead
-      // (power-domain question), else if the codec never answered
-      // "E83: no ACK".
       else {
 #ifdef ZX_AUDIO_ES8311_ONLY
 #ifdef ZX_ESDIAG
@@ -1870,15 +1866,7 @@ _audioOutOptions.addOption(_audioHdmiOp.addQuickKey(getQuickKey(audioOutQuickKey
           (unsigned)ed->rb[8], (unsigned)ed->rb[9],
           (unsigned)ed->rb[10], (unsigned)ed->rb[11]);
 #else
-        if (zxEs8311PwrProbe() == 0xFF) {
-          pen->printAt(0, 1, false, "E83: PWR?");
-        }
-        else if (!zxEs8311Present()) {
-          pen->printAt(0, 1, false, "E83: no ACK");
-        }
-        else {
-          builtForRow(pen);
-        }
+        builtForRow(pen);
 #endif
 #else
         builtForRow(pen);
