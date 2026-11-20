@@ -94,3 +94,25 @@ IRQ-uri audio. RP2350B are mapping de pini diferit: GPOUT1/GP23 ucide video DVI.
 - **Lecție de proces:** cea mai mică dif posibilă pe baza R9 sănătoase (doar
   eliminarea celor 4 scrieri ADC) izolează variabila testată; restructurările
   mari de comentarii/diag în același commit fac cauza imposibil de atribuit.
+
+## Rundele R13–R17 — PSRAM (PARKAT DEFINITIV, decizia utilizatorului, 2026-11-20)
+
+| Rundă | Commit | Ce s-a testat | Rezultat |
+|---|---|---|---|
+| R13 (`d571286`) | PSRAM 8MB APS6404 init QMI CS1 (GP8) + test pattern la boot + rând meniu | **boot MORT** (SDK init pre-main @ 125MHz) |
+| R14 (`a25aa09`) | scos retime QMI (atingea XIP-ul flash-ului = video mort) — SDK face init-ul pre-main | tot **boot mort** |
+| R16 (`feaf423`) | port Robson din rp2350-modules (testat pe RP2350PC): init la RUNTIME, după raise-ul de clock, timing din clk_sys live | tot **boot mort** |
+
+**Decizia: PSRAM = PARKAT DEFINITIV.** Saga completă:
+- SDK pre-main init (@ 125MHz) = ucide boot-ul;
+- port-ul Robson (runtime init, QPI, retime flash) = ucide și el —
+  **incompatibilitatea** = combinația noastră **251.75MHz + PicoDVI** vs
+  contextul lui Robson (**clasă 150MHz + HSTX**);
+- **Viitor:** sesiune DEDICATĂ = studiu al relației ceas–flash–timing
+  (flash-timing la 251.75MHz!) + eventual abordarea full-stack Robson.
+
+**FINAL WORKING = starea R12** (`0533e24` = ultimul commit confirmat pe
+hardware: video HDMI / USB / microSD / PWM+HDMI audio). **R17 = rebuild al
+aceluiași cod** (revert `feaf423` + reverts no-op R13/R14; arborele
+byte-identic cu `0533e24`; BSS 458.872 = exact R12; zero simboluri PSRAM
+proprie; host tests 2/2 PASS; build `_build_olimexR17_20261120`).
